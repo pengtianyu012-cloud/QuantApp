@@ -340,7 +340,7 @@ class QuantMainWindow(QMainWindow):
         )
         orders = self.create_table(
             ["订单号", "代码", "方向", "数量", "价格", "状态", "说明"],
-            [["-", "-", "-", "-", "-", "尚未实现", "阶段3接入模拟撮合"]],
+            [["-", "-", "-", "-", "-", "尚未实现", "核心已实现，页面阶段4接线"]],
         )
         layout.addWidget(self.wrap_group("当前持仓", positions))
         layout.addWidget(self.wrap_group("待成交订单", orders))
@@ -505,4 +505,5 @@ class QuantMainWindow(QMainWindow):
     @staticmethod
     def format_pct(value: Decimal) -> str:
         return f"{value * Decimal('100'):.0f}%"
+
 

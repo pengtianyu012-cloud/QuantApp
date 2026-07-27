@@ -81,7 +81,7 @@
 
 ## 当前阶段
 
-阶段 2：P0 数据库与 Mock 行情已完成。当前进入阶段 3：P0 A股交易规则、成本、账户、订单、风控。
+阶段 3：P0 A股交易规则、成本、账户、订单、风控已完成。当前进入阶段 4：P0 桌面端核心页面接线。
 
 ## 已完成内容
 
@@ -99,74 +99,82 @@
 - 已建立 `app/` 分层结构。
 - 已将根目录 `main.py` 改为薄启动器，真实启动逻辑迁移到 `app/main.py`。
 - 已将 PySide6 主窗口迁移到 `app/ui/main_window.py`，并扩展为 10 个核心页面。
-- 未接线功能均在 UI 中标注“尚未实现”，未伪称真实行情、策略或撮合能力可用。
 - 已集中配置交易规则、成本假设、刷新参数、运行路径和免责声明。
-- 已配置滚动日志、README、基础 docs、requirements、pyproject、PowerShell 脚本和测试。
 - 阶段 1 提交：`e6201b6 feat: scaffold application architecture`。
 
 ### 阶段 2：P0 数据库与 Mock 行情
 
 - 已实现 SQLite 初始化机制、版本记录和需求中的 19 张核心表。
-- 已定义 `MarketDataProvider` 抽象接口和行情数据模型：股票、最新行情、盘口、K线、交易日历、健康检查。
+- 已定义 `MarketDataProvider` 抽象接口和行情数据模型。
 - 已实现 `MockMarketDataProvider`，支持股票列表、最新行情、五档盘口、分时、日线、交易日历、财务指标示例和健康检查。
-- 已实现 `FallbackMarketDataProvider`，支持主数据源失败后降级到备用数据源。
-- 已实现 `TtlMemoryCache` 轻量 TTL 缓存。
-- 已实现行情字段校验：价格、成交量、成交额、时区、延迟、盘口档位和委托量。
-- 已更新 README、架构文档和数据源文档，明确 Mock 已实现、真实行情尚未接入。
-- 已更新 UI 文案，显示 Mock 已实现但页面接线仍在阶段4。
+- 已实现主备降级、TTL 缓存和行情字段校验。
+- 阶段 2 提交：`f400429 feat: add database and mock market data`。
+
+### 阶段 3：P0 A股交易规则、成本、账户、订单、风控
+
+- 已实现 A股代码与交易所识别，支持主板、创业板、科创板识别。
+- 已实现交易时段判断，使用 `Asia/Shanghai` 或命名 UTC+8 回退，不依赖 Windows 本地时区。
+- 已实现 100 股整数倍买入规则、零股尾仓卖出规则和 T+1 规则。
+- 已实现主板 10%、创业板/科创板 20%、ST 5% 涨跌停规则。
+- 上市不足 60 日股票标记为“规则不确定”，禁止强制模拟成交。
+- 已实现集中交易成本计算：佣金、最低佣金、印花税、过户费、滑点、市场冲击和成交量参与率。
+- 已实现模拟账户内核：现金、持仓、可卖数量、订单提交、成交应用和资产计算。
+- 已实现风控：单股30%、总仓位90%、最大回撤15%暂停新增买入、卖出豁免和现金不足拦截。
+- 已实现撮合可成交性判断：停牌、行情过期、涨停无法买入、跌停无法卖出、订单顺延、部分成交、无盘口降级撮合。
+- 已更新 README、架构文档、交易规则文档和模拟交易页文案。
 
 ## 修改的文件
 
-- `app/database/schema.py`
-- `app/database/connection.py`
-- `app/database/__init__.py`
-- `app/data/providers/base.py`
-- `app/data/providers/mock.py`
-- `app/data/providers/fallback.py`
-- `app/data/providers/__init__.py`
-- `app/data/cache/memory_cache.py`
-- `app/data/cache/__init__.py`
-- `app/data/validators/market.py`
-- `app/data/validators/__init__.py`
-- `app/data/__init__.py`
+- `app/models/trading.py`
+- `app/models/__init__.py`
+- `app/execution/trading_rules.py`
+- `app/execution/costs.py`
+- `app/execution/simulator.py`
+- `app/execution/__init__.py`
+- `app/portfolio/account.py`
+- `app/portfolio/__init__.py`
+- `app/risk/checks.py`
+- `app/risk/__init__.py`
 - `app/ui/main_window.py`
 - `README.md`
 - `docs/ARCHITECTURE.md`
-- `docs/DATA_SOURCES.md`
-- `tests/unit/test_database.py`
-- `tests/unit/test_mock_market_data.py`
-- `tests/unit/test_market_validation.py`
-- `tests/unit/test_provider_fallback.py`
+- `docs/TRADING_RULES.md`
+- `tests/unit/test_trading_rules.py`
+- `tests/unit/test_trade_costs.py`
+- `tests/unit/test_account.py`
+- `tests/unit/test_risk.py`
+- `tests/unit/test_execution_simulator.py`
 - `DEVELOPMENT_STATUS.md`
 
 ## 测试结果
 
-阶段 2 已执行：
+阶段 3 已执行：
 
 - `.\.venv\Scripts\python.exe -m compileall -q main.py app tests`：通过。
-- `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，21 个测试 OK。
+- `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，42 个测试 OK。
 - `.\.venv\Scripts\python.exe -c "from app.main import build_application; app, window = build_application(['test']); print(window.windowTitle(), window.tabs.count()); window.close(); app.processEvents()"`：通过，输出 `A股量化模拟交易系统 10`。
+- `.\scripts\test.ps1`：通过，42 个测试 OK。
 - `.\scripts\check.ps1`：通过编译检查；ruff 未安装，脚本明确提示跳过 ruff。
-- `.\scripts\test.ps1`：通过，21 个测试 OK。
 
 ## 当前失败项
 
 - 当前虚拟环境仅确认 PySide6 已安装；`pandas`、`numpy`、`SQLAlchemy`、`pytest`、`ruff`、`PyInstaller` 尚未安装。
 - 数据库当前使用标准库 `sqlite3` 完成可运行初始化；尚未切换到 SQLAlchemy ORM。
 - 尚未接入真实免费行情数据源，真实最新价和真实五档盘口未验证。
-- Mock 行情尚未绑定到 UI 刷新线程。
-- 尚未实现模拟账户、撮合、风控、策略和回测。
+- Mock 行情、账户、风控和撮合内核尚未绑定到 UI 页面。
+- 订单、成交和账户状态尚未持久化写入数据库。
+- 尚未实现策略引擎、回测、绩效分析和 Windows 实际打包。
 - 尚未执行真实 ruff 检查，因为 ruff 未安装。
 
 ## 下一步准确任务
 
-1. 开始阶段 3：实现 A股代码与交易所识别、交易时段判断、涨跌停规则、100股整数倍和 T+1 规则。
-2. 实现集中交易成本计算模块。
-3. 实现模拟账户、持仓、订单、成交的核心模型和服务。
-4. 实现单股30%、总仓位90%、最大回撤15%暂停买入等风控检查。
-5. 为规则、成本、账户、订单顺延、停牌/涨跌停、T+1 和风控补测试。
-6. 运行编译检查、unittest、启动检查，更新 `DEVELOPMENT_STATUS.md` 并提交阶段 3 稳定结果。
+1. 开始阶段 4：将 Mock 行情绑定到总览、实时行情和市场数据页面。
+2. 将模拟账户、持仓、待成交订单、成交记录绑定到模拟交易页面。
+3. 实现手工模拟买入/卖出表单，保留二次确认和“不会发送到券商”提示。
+4. 将风控状态、成本假设和未实现能力状态显示在 UI 中。
+5. 增加 UI 最小交互测试或服务层测试，确保下单后账户和表格状态变化正确。
+6. 运行编译检查、unittest、启动检查，更新 `DEVELOPMENT_STATUS.md` 并提交阶段 4 稳定结果。
 
 ## 下一条恢复命令或任务
 
-从项目根目录执行：读取原始需求、读取 `DEVELOPMENT_STATUS.md`、查看 `git status --short` 和 `git log --oneline -5`，然后继续“阶段 3：P0 A股交易规则、成本、账户、订单、风控”。优先任务是创建 `app/execution/trading_rules.py`、`app/execution/costs.py`、`app/portfolio/account.py` 和 `app/risk/checks.py`。
+从项目根目录执行：读取原始需求、读取 `DEVELOPMENT_STATUS.md`、查看 `git status --short` 和 `git log --oneline -5`，然后继续“阶段 4：P0 桌面端核心页面接线”。优先任务是重构 `app/ui/main_window.py`，让页面从 `MockMarketDataProvider`、`SimulatedAccount`、`RiskManager` 和 `SimulatedMatcher` 读取真实内核状态。

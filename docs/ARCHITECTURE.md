@@ -17,9 +17,10 @@
 - `app/data/providers` 行情数据源接口、Mock适配器和主备降级包装器
 - `app/database` SQLite 初始化、版本记录和核心表结构
 - `app/engine` 事件驱动交易引擎
-- `app/execution` 模拟撮合
-- `app/risk` 风控
-- `app/portfolio` 账户、持仓和资产快照
+- `app/execution` A股交易规则、成本计算和模拟撮合可成交性判断
+- `app/risk` 单股、总仓位、回撤和现金风控
+- `app/portfolio` 模拟账户、持仓、订单应用和资产计算
 - `app/strategies` Strategy 基类和四个内置策略
 - `app/backtest` 历史回测与绩效分析
+
 
