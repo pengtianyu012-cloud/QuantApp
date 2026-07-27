@@ -81,7 +81,7 @@
 
 ## 当前阶段
 
-阶段 5：P1 策略引擎、示例策略和回测已完成。当前进入阶段 6：P2 数据质量、完整文档和 Windows 打包配置。
+阶段 6：P2 数据质量、完整文档和 Windows 打包配置已完成。当前项目达到本轮可运行、可测试、可恢复开发状态。
 
 ## 已完成内容
 
@@ -122,43 +122,43 @@
 
 ### 阶段 5：P1 策略引擎、示例策略和回测
 
-- 已实现 Strategy 基类、策略状态、信号方向和完整信号记录字段。
-- 已实现四个内置策略基础信号逻辑：均线趋势、动量选股、低估值因子、盘口与量价演示。
-- 已实现 `StrategyService`，支持启动、暂停、停止、状态查询和防重复启动。
-- 已实现 Mock 日线策略信号生成和盘口演示策略信号生成。
+- 已实现 Strategy 基类、四个内置策略基础信号逻辑、策略服务和防重复启动。
 - 已实现 `DailyBacktestEngine`，严格使用 T 日及之前数据生成信号，T+1 bar 开盘价成交。
 - 策略中心、选股结果、历史回测和策略对比页面已完成最小服务接线。
-- 已更新 README、用户指南和回测假设文档。
+- 阶段 5 提交：`7243a5e feat: add strategy engine and daily backtest`。
+
+### 阶段 6：P2 数据质量、完整文档和 Windows 打包配置
+
+- 已实现 `DataQualityService`，检查 Mock 股票列表、最新行情和五档盘口字段质量。
+- 已补充数据质量测试。
+- 已创建 `A股量化模拟交易系统.spec`。
+- 已更新 `scripts/build_windows.ps1`，使用 spec 并在 PyInstaller 缺失时明确失败。
+- 已补充打包配置测试。
+- 已更新 README、数据源文档、数据质量文档、用户指南和回测假设文档。
 
 ## 修改的文件
 
-- `app/strategies/base.py`
-- `app/strategies/builtin.py`
-- `app/strategies/__init__.py`
-- `app/services/strategy_service.py`
-- `app/services/trading_app_service.py`
+- `app/services/data_quality_service.py`
 - `app/services/__init__.py`
-- `app/backtest/engine.py`
-- `app/backtest/__init__.py`
-- `app/ui/main_window.py`
+- `tests/unit/test_data_quality_service.py`
+- `tests/unit/test_packaging_config.py`
+- `A股量化模拟交易系统.spec`
+- `scripts/build_windows.ps1`
 - `README.md`
-- `docs/USER_GUIDE.md`
-- `docs/BACKTEST_ASSUMPTIONS.md`
-- `tests/unit/test_strategies.py`
-- `tests/unit/test_strategy_service.py`
-- `tests/unit/test_backtest_engine.py`
-- `tests/integration/test_ui_strategy_preview.py`
+- `docs/DATA_SOURCES.md`
+- `docs/DATA_QUALITY.md`
 - `DEVELOPMENT_STATUS.md`
 
 ## 测试结果
 
-阶段 5 已执行：
+阶段 6 已执行：
 
 - `.\.venv\Scripts\python.exe -m compileall -q main.py app tests`：通过。
-- `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，55 个测试 OK。
+- `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，59 个测试 OK。
 - `.\.venv\Scripts\python.exe -c "from app.main import build_application; app, window = build_application(['test']); print(window.windowTitle(), window.tabs.count()); window.close(); app.processEvents()"`：通过，输出 `A股量化模拟交易系统 10`。
-- `.\scripts\test.ps1`：通过，55 个测试 OK。
+- `.\scripts\test.ps1`：通过，59 个测试 OK。
 - `.\scripts\check.ps1`：通过编译检查；ruff 未安装，脚本明确提示跳过 ruff。
+- `.\scripts\build_windows.ps1`：按预期失败，原因是 PyInstaller 未安装；脚本给出明确安装提示，未生成 exe，未伪称打包成功。
 
 ## 当前失败项
 
@@ -169,16 +169,18 @@
 - 订单、成交和账户状态尚未持久化写入数据库，应用重启后不会恢复账户。
 - 回测当前为基础骨架，不含完整卖出规则、组合再平衡、复权、分红、真实沪深300基准和真实财务披露时点控制。
 - 尚未执行真实 ruff 检查，因为 ruff 未安装。
-- 尚未完成 Windows 实际打包或 PyInstaller spec 验证。
+- 尚未实际生成 Windows exe，因为 PyInstaller 未安装。
 
 ## 下一步准确任务
 
-1. 开始阶段 6：实现数据质量报告模型/服务，补充 Mock 数据质量检查。
-2. 完善 README 和 docs，明确真实数据源未接入、Mock 字段支持范围、交易/回测限制和启动命令。
-3. 补充 PyInstaller spec 或强化 `scripts/build_windows.ps1`，明确 Windows 打包边界。
-4. 如允许安装依赖，尝试安装 requirements 并执行真实 pytest/ruff；否则继续保留当前缺失项记录。
-5. 运行编译检查、unittest、启动检查，更新 `DEVELOPMENT_STATUS.md` 并提交阶段 6 稳定结果。
+1. 在用户允许修改虚拟环境和联网安装依赖时，执行 `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`。
+2. 依赖安装成功后运行真实 `.\.venv\Scripts\python.exe -m pytest` 和 `.\.venv\Scripts\python.exe -m ruff check .`。
+3. 接入订单、成交、账户状态到 SQLite，完成应用重启恢复。
+4. 实现后台 QThread/线程池行情刷新。
+5. 验证并接入一个合法免费行情数据源；真实字段必须实际测试，不得伪造。
+6. 扩展回测：卖出规则、组合再平衡、沪深300真实基准、复权/分红处理和财务披露时点控制。
+7. 安装 PyInstaller 后运行 `.\scripts\build_windows.ps1` 实际生成 Windows exe。
 
 ## 下一条恢复命令或任务
 
-从项目根目录执行：读取原始需求、读取 `DEVELOPMENT_STATUS.md`、查看 `git status --short` 和 `git log --oneline -5`，然后继续“阶段 6：P2 数据质量、完整文档和 Windows 打包配置”。优先任务是创建 `app/services/data_quality_service.py`、更新 docs，并补充打包配置检查。
+从项目根目录执行：读取原始需求、读取 `DEVELOPMENT_STATUS.md`、查看 `git status --short` 和 `git log --oneline -5`。建议下一步先处理依赖安装与真实 ruff/pytest，再做数据库持久化恢复。
