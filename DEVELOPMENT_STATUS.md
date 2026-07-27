@@ -81,7 +81,7 @@
 
 ## 当前阶段
 
-阶段 3：P0 A股交易规则、成本、账户、订单、风控已完成。当前进入阶段 4：P0 桌面端核心页面接线。
+阶段 4：P0 桌面端核心页面接线已完成。当前进入阶段 5：P1 策略引擎、示例策略和回测。
 
 ## 已完成内容
 
@@ -89,8 +89,7 @@
 
 - 已正确以 UTF-8 读取原始需求附件。
 - 已初始化 Git 仓库。
-- 已创建 `.gitignore`，避免提交 `.venv`、缓存、日志、运行数据库和本地密钥。
-- 已创建 `DEVELOPMENT_STATUS.md` 并提交可恢复基线。
+- 已创建 `.gitignore` 和 `DEVELOPMENT_STATUS.md`。
 - 阶段 0 提交：`24ba712 chore: establish resumable development baseline`。
 - 阶段 0 状态同步提交：`eb4a841 docs: record baseline completion`。
 
@@ -106,54 +105,48 @@
 
 - 已实现 SQLite 初始化机制、版本记录和需求中的 19 张核心表。
 - 已定义 `MarketDataProvider` 抽象接口和行情数据模型。
-- 已实现 `MockMarketDataProvider`，支持股票列表、最新行情、五档盘口、分时、日线、交易日历、财务指标示例和健康检查。
-- 已实现主备降级、TTL 缓存和行情字段校验。
+- 已实现 Mock 行情、主备降级、TTL 缓存和行情字段校验。
 - 阶段 2 提交：`f400429 feat: add database and mock market data`。
 
 ### 阶段 3：P0 A股交易规则、成本、账户、订单、风控
 
-- 已实现 A股代码与交易所识别，支持主板、创业板、科创板识别。
-- 已实现交易时段判断，使用 `Asia/Shanghai` 或命名 UTC+8 回退，不依赖 Windows 本地时区。
-- 已实现 100 股整数倍买入规则、零股尾仓卖出规则和 T+1 规则。
-- 已实现主板 10%、创业板/科创板 20%、ST 5% 涨跌停规则。
-- 上市不足 60 日股票标记为“规则不确定”，禁止强制模拟成交。
-- 已实现集中交易成本计算：佣金、最低佣金、印花税、过户费、滑点、市场冲击和成交量参与率。
-- 已实现模拟账户内核：现金、持仓、可卖数量、订单提交、成交应用和资产计算。
-- 已实现风控：单股30%、总仓位90%、最大回撤15%暂停新增买入、卖出豁免和现金不足拦截。
-- 已实现撮合可成交性判断：停牌、行情过期、涨停无法买入、跌停无法卖出、订单顺延、部分成交、无盘口降级撮合。
-- 已更新 README、架构文档、交易规则文档和模拟交易页文案。
+- 已实现 A股代码与交易所识别、交易时段、100股、T+1、涨跌停和新股规则不确定处理。
+- 已实现集中交易成本计算、模拟账户、风控和撮合可成交性判断。
+- 阶段 3 提交：`7de260d feat: implement simulated trading core`。
+
+### 阶段 4：P0 桌面端核心页面接线
+
+- 已创建 `TradingAppService`，组合 Mock 行情、模拟账户、风控和撮合内核。
+- 总览仪表盘已读取 Mock 数据源状态、账户资产、现金、持仓市值和风控状态。
+- 实时行情页已绑定 Mock 自选股最新行情。
+- 市场数据页已绑定 Mock 股票列表和排除状态。
+- 模拟交易页已绑定账户持仓、订单、成交记录。
+- 手工模拟买入/卖出已接入服务层，并保留二次确认和免责声明。
+- 下单成功后 UI 表格会刷新；风控拒绝不会创建订单。
+- 已修正 Mock 低价股昨收逻辑，避免默认触发涨停。
+- 已更新 README 和用户指南。
 
 ## 修改的文件
 
-- `app/models/trading.py`
-- `app/models/__init__.py`
-- `app/execution/trading_rules.py`
-- `app/execution/costs.py`
-- `app/execution/simulator.py`
-- `app/execution/__init__.py`
+- `app/services/trading_app_service.py`
+- `app/services/__init__.py`
 - `app/portfolio/account.py`
-- `app/portfolio/__init__.py`
-- `app/risk/checks.py`
-- `app/risk/__init__.py`
+- `app/data/providers/mock.py`
 - `app/ui/main_window.py`
 - `README.md`
-- `docs/ARCHITECTURE.md`
-- `docs/TRADING_RULES.md`
-- `tests/unit/test_trading_rules.py`
-- `tests/unit/test_trade_costs.py`
-- `tests/unit/test_account.py`
-- `tests/unit/test_risk.py`
-- `tests/unit/test_execution_simulator.py`
+- `docs/USER_GUIDE.md`
+- `tests/unit/test_trading_app_service.py`
+- `tests/integration/test_ui_manual_order.py`
 - `DEVELOPMENT_STATUS.md`
 
 ## 测试结果
 
-阶段 3 已执行：
+阶段 4 已执行：
 
 - `.\.venv\Scripts\python.exe -m compileall -q main.py app tests`：通过。
-- `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，42 个测试 OK。
+- `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，46 个测试 OK。
 - `.\.venv\Scripts\python.exe -c "from app.main import build_application; app, window = build_application(['test']); print(window.windowTitle(), window.tabs.count()); window.close(); app.processEvents()"`：通过，输出 `A股量化模拟交易系统 10`。
-- `.\scripts\test.ps1`：通过，42 个测试 OK。
+- `.\scripts\test.ps1`：通过，46 个测试 OK。
 - `.\scripts\check.ps1`：通过编译检查；ruff 未安装，脚本明确提示跳过 ruff。
 
 ## 当前失败项
@@ -161,20 +154,20 @@
 - 当前虚拟环境仅确认 PySide6 已安装；`pandas`、`numpy`、`SQLAlchemy`、`pytest`、`ruff`、`PyInstaller` 尚未安装。
 - 数据库当前使用标准库 `sqlite3` 完成可运行初始化；尚未切换到 SQLAlchemy ORM。
 - 尚未接入真实免费行情数据源，真实最新价和真实五档盘口未验证。
-- Mock 行情、账户、风控和撮合内核尚未绑定到 UI 页面。
-- 订单、成交和账户状态尚未持久化写入数据库。
+- UI 目前使用同步 Mock 数据读取，尚未实现后台 QThread/线程池刷新。
+- 订单、成交和账户状态尚未持久化写入数据库，应用重启后不会恢复账户。
 - 尚未实现策略引擎、回测、绩效分析和 Windows 实际打包。
 - 尚未执行真实 ruff 检查，因为 ruff 未安装。
 
 ## 下一步准确任务
 
-1. 开始阶段 4：将 Mock 行情绑定到总览、实时行情和市场数据页面。
-2. 将模拟账户、持仓、待成交订单、成交记录绑定到模拟交易页面。
-3. 实现手工模拟买入/卖出表单，保留二次确认和“不会发送到券商”提示。
-4. 将风控状态、成本假设和未实现能力状态显示在 UI 中。
-5. 增加 UI 最小交互测试或服务层测试，确保下单后账户和表格状态变化正确。
-6. 运行编译检查、unittest、启动检查，更新 `DEVELOPMENT_STATUS.md` 并提交阶段 4 稳定结果。
+1. 开始阶段 5：实现 Strategy 基类、策略运行状态和防重复启动。
+2. 实现盘口与量价演示策略、均线趋势策略和动量选股策略的基础信号逻辑。
+3. 实现日线回测骨架，严格 T 日收盘信号、T+1 开盘成交，不使用未来数据。
+4. 将策略中心、选股结果、历史回测和策略对比页面接入阶段5服务。
+5. 补充策略信号、重复启动、回测时间分离和 UI 最小测试。
+6. 运行编译检查、unittest、启动检查，更新 `DEVELOPMENT_STATUS.md` 并提交阶段 5 稳定结果。
 
 ## 下一条恢复命令或任务
 
-从项目根目录执行：读取原始需求、读取 `DEVELOPMENT_STATUS.md`、查看 `git status --short` 和 `git log --oneline -5`，然后继续“阶段 4：P0 桌面端核心页面接线”。优先任务是重构 `app/ui/main_window.py`，让页面从 `MockMarketDataProvider`、`SimulatedAccount`、`RiskManager` 和 `SimulatedMatcher` 读取真实内核状态。
+从项目根目录执行：读取原始需求、读取 `DEVELOPMENT_STATUS.md`、查看 `git status --short` 和 `git log --oneline -5`，然后继续“阶段 5：P1 策略引擎、示例策略和回测”。优先任务是创建 `app/strategies/base.py`、`app/strategies/builtin.py`、`app/services/strategy_service.py` 和 `app/backtest/engine.py`。

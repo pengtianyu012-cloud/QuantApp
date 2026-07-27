@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
@@ -65,6 +65,11 @@ class SimulatedAccount:
         )
         self.orders.append(order)
         return order
+
+    def update_order_status(self, order: Order, status: OrderStatus, reason: str = "") -> Order:
+        updated_order = replace(order, status=status, reason=reason)
+        self.orders = [updated_order if item.order_id == order.order_id else item for item in self.orders]
+        return updated_order
 
     def apply_fill(
         self,

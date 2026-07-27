@@ -203,7 +203,7 @@ class MockMarketDataProvider(MarketDataProvider):
             "688001.SH": Decimal("31.25"),
             "000000.SZ": Decimal("2.35"),
         }[symbol]
-        prev_close = base_price - Decimal("1.20")
+        prev_close = (base_price * Decimal("0.99")).quantize(Decimal("0.01"))
         change = base_price - prev_close
         return Quote(
             symbol=symbol,
@@ -238,3 +238,4 @@ class MockMarketDataProvider(MarketDataProvider):
             amount=close_price * Decimal(10_000 + index * 100),
             source=self.name,
         )
+
