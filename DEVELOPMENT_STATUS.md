@@ -81,7 +81,7 @@
 
 ## 当前阶段
 
-阶段 1：P0 工程骨架与核心配置已完成。当前进入阶段 2：P0 数据库与 Mock 行情。
+阶段 2：P0 数据库与 Mock 行情已完成。当前进入阶段 3：P0 A股交易规则、成本、账户、订单、风控。
 
 ## 已完成内容
 
@@ -96,58 +96,77 @@
 
 ### 阶段 1：P0 工程骨架与核心配置
 
-- 已建立 `app/` 分层结构：`config`、`ui`、`models`、`services`、`utils`、`data`、`strategies`、`engine`、`execution`、`risk`、`portfolio`、`backtest`、`database`。
+- 已建立 `app/` 分层结构。
 - 已将根目录 `main.py` 改为薄启动器，真实启动逻辑迁移到 `app/main.py`。
 - 已将 PySide6 主窗口迁移到 `app/ui/main_window.py`，并扩展为 10 个核心页面。
 - 未接线功能均在 UI 中标注“尚未实现”，未伪称真实行情、策略或撮合能力可用。
 - 已集中配置交易规则、成本假设、刷新参数、运行路径和免责声明。
-- 已配置滚动日志，运行日志写入 `logs/quant_app.log`，日志文件不纳入版本控制。
-- 已创建 README、基础 docs、requirements、pyproject、PowerShell 开发脚本和测试。
-- 已处理 Windows 环境缺少 `tzdata` 时 `Asia/Shanghai` 无法加载的问题，回退到命名 UTC+8 时区，并把 `tzdata` 加入依赖清单。
+- 已配置滚动日志、README、基础 docs、requirements、pyproject、PowerShell 脚本和测试。
+- 阶段 1 提交：`e6201b6 feat: scaffold application architecture`。
+
+### 阶段 2：P0 数据库与 Mock 行情
+
+- 已实现 SQLite 初始化机制、版本记录和需求中的 19 张核心表。
+- 已定义 `MarketDataProvider` 抽象接口和行情数据模型：股票、最新行情、盘口、K线、交易日历、健康检查。
+- 已实现 `MockMarketDataProvider`，支持股票列表、最新行情、五档盘口、分时、日线、交易日历、财务指标示例和健康检查。
+- 已实现 `FallbackMarketDataProvider`，支持主数据源失败后降级到备用数据源。
+- 已实现 `TtlMemoryCache` 轻量 TTL 缓存。
+- 已实现行情字段校验：价格、成交量、成交额、时区、延迟、盘口档位和委托量。
+- 已更新 README、架构文档和数据源文档，明确 Mock 已实现、真实行情尚未接入。
+- 已更新 UI 文案，显示 Mock 已实现但页面接线仍在阶段4。
 
 ## 修改的文件
 
-- `main.py`
-- `.gitignore`
-- `.env.example`
+- `app/database/schema.py`
+- `app/database/connection.py`
+- `app/database/__init__.py`
+- `app/data/providers/base.py`
+- `app/data/providers/mock.py`
+- `app/data/providers/fallback.py`
+- `app/data/providers/__init__.py`
+- `app/data/cache/memory_cache.py`
+- `app/data/cache/__init__.py`
+- `app/data/validators/market.py`
+- `app/data/validators/__init__.py`
+- `app/data/__init__.py`
+- `app/ui/main_window.py`
 - `README.md`
-- `pyproject.toml`
-- `requirements.txt`
-- `app/**`
-- `tests/**`
-- `docs/**`
-- `scripts/**`
-- `data/.gitkeep`
-- `logs/.gitkeep`
+- `docs/ARCHITECTURE.md`
+- `docs/DATA_SOURCES.md`
+- `tests/unit/test_database.py`
+- `tests/unit/test_mock_market_data.py`
+- `tests/unit/test_market_validation.py`
+- `tests/unit/test_provider_fallback.py`
 - `DEVELOPMENT_STATUS.md`
 
 ## 测试结果
 
-阶段 1 已执行：
+阶段 2 已执行：
 
 - `.\.venv\Scripts\python.exe -m compileall -q main.py app tests`：通过。
-- `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，9 个测试 OK。
+- `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，21 个测试 OK。
 - `.\.venv\Scripts\python.exe -c "from app.main import build_application; app, window = build_application(['test']); print(window.windowTitle(), window.tabs.count()); window.close(); app.processEvents()"`：通过，输出 `A股量化模拟交易系统 10`。
 - `.\scripts\check.ps1`：通过编译检查；ruff 未安装，脚本明确提示跳过 ruff。
-- `.\scripts\test.ps1`：通过，9 个测试 OK。
+- `.\scripts\test.ps1`：通过，21 个测试 OK。
 
 ## 当前失败项
 
 - 当前虚拟环境仅确认 PySide6 已安装；`pandas`、`numpy`、`SQLAlchemy`、`pytest`、`ruff`、`PyInstaller` 尚未安装。
-- 尚未实现数据库初始化和数据表。
-- 尚未定义 `MarketDataProvider` 抽象接口和 Mock 数据源。
-- 尚未实现行情字段校验、缓存、限流、重试和降级。
+- 数据库当前使用标准库 `sqlite3` 完成可运行初始化；尚未切换到 SQLAlchemy ORM。
+- 尚未接入真实免费行情数据源，真实最新价和真实五档盘口未验证。
+- Mock 行情尚未绑定到 UI 刷新线程。
 - 尚未实现模拟账户、撮合、风控、策略和回测。
 - 尚未执行真实 ruff 检查，因为 ruff 未安装。
 
 ## 下一步准确任务
 
-1. 开始阶段 2：实现 SQLite 数据库初始化机制和核心表结构。
-2. 定义 `MarketDataProvider` 抽象接口。
-3. 实现 Mock 行情数据源，支持股票列表、最新行情、五档盘口、日线、交易日历、财务指标空能力和健康检查。
-4. 增加数据字段校验、数据源降级状态和对应单元测试。
-5. 运行编译检查、unittest、启动检查，更新 `DEVELOPMENT_STATUS.md` 并提交阶段 2 稳定结果。
+1. 开始阶段 3：实现 A股代码与交易所识别、交易时段判断、涨跌停规则、100股整数倍和 T+1 规则。
+2. 实现集中交易成本计算模块。
+3. 实现模拟账户、持仓、订单、成交的核心模型和服务。
+4. 实现单股30%、总仓位90%、最大回撤15%暂停买入等风控检查。
+5. 为规则、成本、账户、订单顺延、停牌/涨跌停、T+1 和风控补测试。
+6. 运行编译检查、unittest、启动检查，更新 `DEVELOPMENT_STATUS.md` 并提交阶段 3 稳定结果。
 
 ## 下一条恢复命令或任务
 
-从项目根目录执行：读取原始需求、读取 `DEVELOPMENT_STATUS.md`、查看 `git status --short` 和 `git log --oneline -5`，然后继续“阶段 2：P0 数据库与 Mock 行情”。优先任务是创建 `app/database` 初始化模块和 `app/data/providers` 统一行情接口。
+从项目根目录执行：读取原始需求、读取 `DEVELOPMENT_STATUS.md`、查看 `git status --short` 和 `git log --oneline -5`，然后继续“阶段 3：P0 A股交易规则、成本、账户、订单、风控”。优先任务是创建 `app/execution/trading_rules.py`、`app/execution/costs.py`、`app/portfolio/account.py` 和 `app/risk/checks.py`。

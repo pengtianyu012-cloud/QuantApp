@@ -83,7 +83,7 @@ class QuantMainWindow(QMainWindow):
         metrics.setSpacing(12)
         cards = [
             ("市场状态", "待接入", "阶段2接入交易日历后显示"),
-            ("数据源连接", "Mock待接入", "真实数据源需实际验证"),
+            ("数据源连接", "Mock已实现", "页面接线在阶段4完成"),
             ("行情延迟", "尚未实现", "数据源支持后展示"),
             ("账户总资产", self.format_money(self.rules.initial_cash), "本地模拟账户"),
             ("可用现金", self.format_money(self.rules.initial_cash), "当前未建仓"),
@@ -158,7 +158,7 @@ class QuantMainWindow(QMainWindow):
                 "阶段2接入",
                 "数据源不支持时显示",
                 "-",
-                "Mock待接入",
+                "Mock已实现，页面待接线",
             ]
         ]
         layout.addWidget(self.wrap_group("自选股行情", self.create_table(headers, rows)))
@@ -505,3 +505,4 @@ class QuantMainWindow(QMainWindow):
     @staticmethod
     def format_pct(value: Decimal) -> str:
         return f"{value * Decimal('100'):.0f}%"
+
