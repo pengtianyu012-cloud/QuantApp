@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 CORE_TABLES = [
     "instruments",
@@ -173,11 +173,13 @@ SCHEMA_STATEMENTS = [
     CREATE TABLE IF NOT EXISTS positions (
         account_id TEXT NOT NULL,
         symbol TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
         quantity INTEGER NOT NULL,
         available_quantity INTEGER NOT NULL,
         cost_price TEXT NOT NULL,
         market_value TEXT NOT NULL,
         last_price TEXT,
+        last_buy_date TEXT,
         updated_at TEXT NOT NULL,
         PRIMARY KEY (account_id, symbol)
     )
@@ -287,3 +289,10 @@ SCHEMA_STATEMENTS = [
     )
     """,
 ]
+
+MIGRATION_STATEMENTS = {
+    2: [
+        "ALTER TABLE positions ADD COLUMN name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE positions ADD COLUMN last_buy_date TEXT",
+    ],
+}

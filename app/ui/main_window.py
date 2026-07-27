@@ -37,13 +37,13 @@ from app.services.trading_app_service import ManualOrderResult, TradingAppServic
 class QuantMainWindow(QMainWindow):
     """A股量化模拟交易系统主窗口。"""
 
-    def __init__(self) -> None:
+    def __init__(self, service: TradingAppService | None = None) -> None:
         super().__init__()
 
         self.rules = TradingRules()
         self.costs = TradingCostSettings()
         self.refresh = RefreshSettings()
-        self.service = TradingAppService()
+        self.service = service or TradingAppService()
         self.dependencies = dependency_status()
 
         self.setWindowTitle(APP_NAME)
@@ -88,6 +88,7 @@ class QuantMainWindow(QMainWindow):
             ("账户总资产", metrics["account_total"], "本地模拟账户"),
             ("可用现金", metrics["cash"], "账户实时状态"),
             ("持仓市值", metrics["market_value"], "按Mock最新价估值"),
+            ("账户存储", metrics["persistence_status"], "SQLite本地持久化"),
             ("风控状态", metrics["risk_status"], "阶段3内核已接入"),
             ("运行策略", metrics["running_strategy"], "策略阶段尚未接入"),
         ]

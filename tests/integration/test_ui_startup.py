@@ -6,13 +6,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from app.config import APP_NAME
+from app.services import TradingAppService
 from app.ui.main_window import QuantMainWindow
 
 
 class UiStartupTests(unittest.TestCase):
     def test_main_window_builds_core_pages(self) -> None:
         app = QApplication.instance() or QApplication([])
-        window = QuantMainWindow()
+        window = QuantMainWindow(TradingAppService(persist_account=False))
 
         self.assertEqual(window.windowTitle(), APP_NAME)
         self.assertEqual(window.tabs.count(), 10)

@@ -113,7 +113,7 @@
 
 ## 当前阶段
 
-阶段 7 已完成并提交前待记录；下一阶段为阶段 8 模拟账户数据库持久化与恢复。
+阶段 8 已完成并提交前待记录；下一阶段为阶段 9 真实免费行情与后台刷新。
 
 ## 已完成内容
 
@@ -176,44 +176,59 @@
 - 已修复 `scripts/build_windows.ps1`：允许覆盖旧产物，并在 PyInstaller 失败时传播错误。
 - 已真实生成 `dist/A股量化模拟交易系统/A股量化模拟交易系统.exe`，启动存活检查通过。
 
+### 阶段 8：模拟账户数据库持久化与恢复
+
+- 数据库版本升级到 v2，新增持仓名称和最后买入日期字段，并支持现有 v1 数据库事务迁移。
+- 新增 `AccountRepository`，在单个 SQLite 事务中保存账户、持仓、订单和成交完整快照。
+- 恢复时保留 Decimal 金额、订单状态、成交成本、T+1 可用数量和带时区时间。
+- `TradingAppService` 已在账户副本上执行订单，持久化成功后才提交内存状态；保存失败不会产生伪成交状态。
+- 应用启动会恢复 `SIM-001` 本地模拟账户，首次启动自动创建；UI 显示账户存储状态。
+- 测试可显式禁用持久化或注入仓储，避免污染用户运行数据库。
+- frozen Windows exe 的数据库、日志和配置路径改为 `%LOCALAPPDATA%/QuantApp`，不写入程序安装目录。
+
 ## 修改的文件
 
-- `pyproject.toml`
-- `requirements.txt`
-- `scripts/build_windows.ps1`
-- `app/**/*.py`（ruff 安全修复、格式化及 `StrEnum` 更新）
-- `tests/**/*.py`（ruff 格式化，不改变测试语义）
+- `app/database/account_repository.py`
+- `app/database/schema.py`
+- `app/database/connection.py`
+- `app/database/__init__.py`
+- `app/services/trading_app_service.py`
+- `app/ui/main_window.py`
+- `app/config/settings.py`
+- `tests/unit/test_account_repository.py`
+- `tests/unit/test_database.py`
+- `tests/unit/test_settings.py`
+- `tests/unit/test_trading_app_service.py`
+- `tests/integration/test_ui_*.py`
 - `DEVELOPMENT_STATUS.md`
 
 ## 测试结果
 
-阶段 7 已执行：
+阶段 8 已执行：
 
-- `.\.venv\Scripts\python.exe -m pytest`：通过，59 个测试通过。
-- `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，59 个测试 OK。
+- `.\.venv\Scripts\python.exe -m pytest`：通过，65 个测试通过。
 - `.\.venv\Scripts\python.exe -m ruff check .`：通过，`All checks passed!`。
 - `.\.venv\Scripts\python.exe -m compileall -q main.py app tests`：通过。
-- 源码无界面启动检查：通过，输出 `A股量化模拟交易系统 10`。
-- `.\scripts\build_windows.ps1`：通过，PyInstaller 6.21.0 在 Windows 11 / Python 3.13.2 下真实生成 exe。
-- 打包 exe 启动存活 5 秒检查：通过，随后由测试进程主动关闭。
+- 数据库、仓储、服务和 UI 定向测试：通过，12 个测试通过。
+- 源码启动与数据库恢复检查：通过，输出 `A股量化模拟交易系统 10 正常`。
 
 ## 当前失败项
 
 - 当前虚拟环境是 Python 3.13.2；项目仍以 Python 3.11 为最低版本和 ruff 目标，但尚未在 Python 3.11 环境复验。
-- 数据库当前使用标准库 `sqlite3` 初始化；订单、成交、账户和持仓尚未写入数据库，重启不会恢复。
 - 尚未接入真实免费行情数据源，真实最新价和真实五档盘口尚未验证。
 - UI 目前同步读取 Mock 数据，尚未实现后台 QThread/线程池刷新。
+- 账户仓储当前基于标准库 `sqlite3` 的显式事务，尚未迁移到 SQLAlchemy ORM；不影响当前 SQLite 持久化能力。
 - 回测仍为基础骨架，不含完整卖出、组合再平衡、复权、分红、真实沪深300和财务披露时点控制。
 
 ## 下一步准确任务
 
-1. 设计并实现账户仓储层，将账户、持仓、订单和成交事务性持久化到 SQLite。
-2. 为首次初始化、成交后保存、重启恢复、T+1 可用数量和重复写入编写测试。
-3. 将 `TradingAppService` 与运行时数据库路径接线，保证应用重启恢复。
-4. 验证并接入合法免费行情数据源，实测最新价和五档盘口；缺失字段不得伪造。
-5. 使用 QThread/线程池实现后台刷新和失败降级。
-6. 扩展回测：卖出规则、组合再平衡、沪深300真实基准、复权/分红处理和财务披露时点控制。
+1. 调研并实测一个无需账号、Token、验证码或绕过访问限制的合法免费公开行情接口。
+2. 实现真实 `MarketDataProvider`，覆盖股票列表、最新行情、五档盘口、日线、交易日历和健康检查的可用子集。
+3. 为 HTTP 层加入超时、有限重试、指数退避、限流、TTL 缓存、字段校验和明确异常降级。
+4. 增加不依赖网络的固定响应测试，以及由环境变量控制的可选真实接口测试。
+5. 将真实源作为主源、Mock 作为演示/测试源或明确降级源接入服务，并显示来源、时间、延迟和不支持字段。
+6. 使用 QThread/线程池实现自选股后台刷新，避免 Qt 主线程阻塞。
 
 ## 下一条恢复命令或任务
 
-从项目根目录执行恢复检查后，直接开始阶段 8：实现 `AccountRepository` 和 `SimulatedAccount` 的 SQLite 保存/恢复，并运行新增持久化测试与完整回归。
+从项目根目录执行恢复检查后，直接开始阶段 9：验证公开免费行情接口，新增真实行情适配器及离线固定响应测试，再做可选网络实测和 QThread 刷新接线。

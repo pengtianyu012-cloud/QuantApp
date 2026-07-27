@@ -7,13 +7,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from app.models import OrderSide
+from app.services import TradingAppService
 from app.ui.main_window import QuantMainWindow
 
 
 class UiManualOrderTests(unittest.TestCase):
     def test_manual_buy_updates_trading_tables(self) -> None:
         app = QApplication.instance() or QApplication([])
-        window = QuantMainWindow()
+        window = QuantMainWindow(TradingAppService(persist_account=False))
 
         result = window.execute_manual_order(
             OrderSide.BUY,

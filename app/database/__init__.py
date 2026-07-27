@@ -1,3 +1,4 @@
+from app.database.account_repository import AccountRepository, AccountRepositoryError
 from app.database.connection import (
     DEFAULT_DATABASE_NAME,
     connect_database,
@@ -9,6 +10,8 @@ from app.database.connection import (
 from app.database.schema import CORE_TABLES, SCHEMA_VERSION
 
 __all__ = [
+    "AccountRepository",
+    "AccountRepositoryError",
     "CORE_TABLES",
     "DEFAULT_DATABASE_NAME",
     "SCHEMA_VERSION",

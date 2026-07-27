@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass
 from datetime import timedelta, timezone
 from decimal import Decimal
@@ -10,6 +12,7 @@ APP_NAME = "A股量化模拟交易系统"
 APP_VERSION = "0.1.0"
 DISCLAIMER = "本软件仅用于量化研究和模拟交易，不构成投资建议，不连接真实券商，不执行真实订单。"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+APP_DATA_DIRECTORY_NAME = "QuantApp"
 
 
 def build_app_timezone():
@@ -70,11 +73,21 @@ class RuntimePaths:
     config_dir: Path
 
 
-def default_runtime_paths(project_root: Path = PROJECT_ROOT) -> RuntimePaths:
+def default_runtime_paths(project_root: Path | None = None) -> RuntimePaths:
+    runtime_root = project_root or _default_runtime_root()
     return RuntimePaths(
-        project_root=project_root,
-        data_dir=project_root / "data",
-        logs_dir=project_root / "logs",
-        cache_dir=project_root / "data" / "cache",
-        config_dir=project_root / "data" / "config",
+        project_root=runtime_root,
+        data_dir=runtime_root / "data",
+        logs_dir=runtime_root / "logs",
+        cache_dir=runtime_root / "data" / "cache",
+        config_dir=runtime_root / "data" / "config",
     )
+
+
+def _default_runtime_root() -> Path:
+    if not getattr(sys, "frozen", False):
+        return PROJECT_ROOT
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        return Path(local_app_data) / APP_DATA_DIRECTORY_NAME
+    return Path.home() / "AppData" / "Local" / APP_DATA_DIRECTORY_NAME

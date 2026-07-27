@@ -1,5 +1,7 @@
 import unittest
 from decimal import Decimal
+from pathlib import Path
+from unittest.mock import patch
 
 from app.config import DISCLAIMER, TradingCostSettings, TradingRules, default_runtime_paths
 
@@ -32,6 +34,18 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(paths.data_dir.name, "data")
         self.assertEqual(paths.logs_dir.name, "logs")
         self.assertIn(paths.project_root, paths.data_dir.parents)
+
+    def test_frozen_runtime_uses_local_app_data(self) -> None:
+        with (
+            patch("app.config.settings.sys.frozen", True, create=True),
+            patch.dict("os.environ", {"LOCALAPPDATA": "C:\\Users\\tester\\AppData\\Local"}),
+        ):
+            paths = default_runtime_paths()
+
+        self.assertEqual(
+            paths.project_root,
+            Path("C:\\Users\\tester\\AppData\\Local") / "QuantApp",
+        )
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.config import default_runtime_paths
-from app.database.schema import SCHEMA_STATEMENTS, SCHEMA_VERSION
+from app.database.schema import MIGRATION_STATEMENTS, SCHEMA_STATEMENTS, SCHEMA_VERSION
 
 DEFAULT_DATABASE_NAME = "quant_app.sqlite3"
 
@@ -20,10 +20,11 @@ def default_database_path() -> Path:
 def connect_database(db_path: Path | None = None) -> Iterator[sqlite3.Connection]:
     path = db_path or default_database_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path)
+    connection = sqlite3.connect(path, timeout=5.0)
     connection.row_factory = sqlite3.Row
     try:
         connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA busy_timeout = 5000")
         yield connection
         connection.commit()
     except Exception:
@@ -36,12 +37,27 @@ def connect_database(db_path: Path | None = None) -> Iterator[sqlite3.Connection
 def initialize_database(db_path: Path | None = None) -> Path:
     path = db_path or default_database_path()
     with connect_database(path) as connection:
-        for statement in SCHEMA_STATEMENTS:
+        connection.execute(SCHEMA_STATEMENTS[0])
+        row = connection.execute("SELECT MAX(version) AS version FROM schema_migrations").fetchone()
+        current_version = row["version"] if row else None
+        if current_version is not None and int(current_version) > SCHEMA_VERSION:
+            raise RuntimeError(f"数据库版本 {current_version} 高于程序支持版本 {SCHEMA_VERSION}")
+
+        for statement in SCHEMA_STATEMENTS[1:]:
             connection.execute(statement)
-        connection.execute(
-            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
-            (SCHEMA_VERSION, datetime.now(UTC).isoformat()),
-        )
+        if current_version is None:
+            connection.execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                (SCHEMA_VERSION, datetime.now(UTC).isoformat()),
+            )
+        else:
+            for version in range(int(current_version) + 1, SCHEMA_VERSION + 1):
+                for statement in MIGRATION_STATEMENTS.get(version, []):
+                    connection.execute(statement)
+                connection.execute(
+                    "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                    (version, datetime.now(UTC).isoformat()),
+                )
     return path
 
 

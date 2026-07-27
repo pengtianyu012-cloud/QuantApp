@@ -9,7 +9,7 @@ from app.services import TradingAppService
 
 class TradingAppServiceTests(unittest.TestCase):
     def test_manual_buy_updates_account_position_order_and_fill(self) -> None:
-        service = TradingAppService()
+        service = TradingAppService(persist_account=False)
 
         result = service.place_manual_order(
             OrderSide.BUY,
@@ -27,7 +27,7 @@ class TradingAppServiceTests(unittest.TestCase):
         self.assertEqual(len(service.account.fills), 1)
 
     def test_risk_rejects_oversized_single_position_before_order_creation(self) -> None:
-        service = TradingAppService()
+        service = TradingAppService(persist_account=False)
 
         result = service.place_manual_order(
             OrderSide.BUY,
@@ -43,7 +43,7 @@ class TradingAppServiceTests(unittest.TestCase):
         self.assertEqual(len(service.account.orders), 0)
 
     def test_invalid_buy_lot_is_rejected(self) -> None:
-        service = TradingAppService()
+        service = TradingAppService(persist_account=False)
 
         result = service.place_manual_order(
             OrderSide.BUY,
