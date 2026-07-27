@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
@@ -49,5 +49,7 @@ def validate_order_book(order_book: OrderBook) -> ValidationResult:
             if level.price is not None and level.price <= Decimal("0"):
                 issues.append(ValidationIssue(f"{side_name}_{index}_price", "盘口价格必须大于0"))
             if level.quantity is not None and level.quantity < 0:
-                issues.append(ValidationIssue(f"{side_name}_{index}_quantity", "盘口委托量不能为负"))
+                issues.append(
+                    ValidationIssue(f"{side_name}_{index}_quantity", "盘口委托量不能为负")
+                )
     return ValidationResult(ok=not issues, issues=tuple(issues))

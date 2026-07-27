@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 
 from app.models import built_in_strategy_catalog
 

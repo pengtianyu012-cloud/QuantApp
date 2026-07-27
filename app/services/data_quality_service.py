@@ -1,7 +1,7 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.data.providers import Instrument, MarketDataProvider, Quote
 from app.data.validators import validate_order_book, validate_quote
@@ -28,7 +28,9 @@ class DataQualityService:
 
     def run_all_checks(self) -> list[DataQualityReport]:
         instruments = self.provider.get_stock_list()
-        quotes = self.provider.get_latest_quotes([instrument.symbol for instrument in instruments[:4]])
+        quotes = self.provider.get_latest_quotes(
+            [instrument.symbol for instrument in instruments[:4]]
+        )
         reports = [self.check_instruments(instruments), self.check_quotes(quotes)]
         if quotes:
             order_book = self.provider.get_order_book(quotes[0].symbol)
@@ -47,7 +49,9 @@ class DataQualityService:
             passed=duplicate_count == 0 and not missing,
             missing_fields=tuple(missing),
             duplicate_count=duplicate_count,
-            message="股票列表字段完整" if duplicate_count == 0 and not missing else "股票列表存在质量问题",
+            message="股票列表字段完整"
+            if duplicate_count == 0 and not missing
+            else "股票列表存在质量问题",
         )
 
     def check_quotes(self, quotes: list[Quote]) -> DataQualityReport:
@@ -84,7 +88,7 @@ class DataQualityService:
     ) -> DataQualityReport:
         return DataQualityReport(
             provider=self.provider.name,
-            checked_at=datetime.now(timezone.utc),
+            checked_at=datetime.now(UTC),
             target=target,
             status="通过" if passed else "失败",
             missing_fields=missing_fields,

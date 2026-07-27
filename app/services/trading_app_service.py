@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -103,10 +103,14 @@ class TradingAppService:
                     stock_name=quote.name,
                     degraded_model=execution.degraded_model,
                 )
-                updated_order = self.account.update_order_status(order, execution.status, execution.reason)
+                updated_order = self.account.update_order_status(
+                    order, execution.status, execution.reason
+                )
                 return ManualOrderResult(True, updated_order, fill, execution.reason)
 
-            updated_order = self.account.update_order_status(order, execution.status, execution.reason)
+            updated_order = self.account.update_order_status(
+                order, execution.status, execution.reason
+            )
             return ManualOrderResult(False, updated_order, None, execution.reason)
         except (AccountError, ValueError, IndexError, MarketDataError) as exc:
             if order is not None:

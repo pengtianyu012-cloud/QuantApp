@@ -1,4 +1,8 @@
-﻿from app.execution.costs import TradeCostBreakdown, calculate_trade_cost, execution_price_with_slippage
+from app.execution.costs import (
+    TradeCostBreakdown,
+    calculate_trade_cost,
+    execution_price_with_slippage,
+)
 from app.execution.simulator import ExecutionConfig, ExecutionResult, SimulatedMatcher
 from app.execution.trading_rules import (
     PriceLimit,

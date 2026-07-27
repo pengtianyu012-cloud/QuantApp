@@ -1,4 +1,4 @@
-﻿from app.config.settings import (
+from app.config.settings import (
     APP_NAME,
     APP_TIME_ZONE,
     APP_VERSION,

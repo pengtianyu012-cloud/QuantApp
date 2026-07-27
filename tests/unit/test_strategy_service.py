@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 
 from app.data.providers import MockMarketDataProvider
 from app.services import StrategyService, StrategyServiceError

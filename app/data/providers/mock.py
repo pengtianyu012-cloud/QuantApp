@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -123,7 +123,9 @@ class MockMarketDataProvider(MarketDataProvider):
         if interval not in {"1m", "5m", "15m"}:
             raise MarketDataError(f"Mock数据源不支持分时周期：{interval}")
         start = datetime.combine(self._now.date(), time(9, 30), tzinfo=APP_TIME_ZONE)
-        return [self._build_bar(symbol, start + timedelta(minutes=index), index) for index in range(8)]
+        return [
+            self._build_bar(symbol, start + timedelta(minutes=index), index) for index in range(8)
+        ]
 
     def get_daily_bars(self, symbol: str, start_date: date, end_date: date) -> list[Bar]:
         self._raise_if_failed()
@@ -190,7 +192,9 @@ class MockMarketDataProvider(MarketDataProvider):
             raise MarketDataError("Mock数据源被设置为失败")
 
     def _find_instrument(self, symbol: str) -> Instrument | None:
-        return next((instrument for instrument in self._instruments if instrument.symbol == symbol), None)
+        return next(
+            (instrument for instrument in self._instruments if instrument.symbol == symbol), None
+        )
 
     def _build_quote(self, symbol: str) -> Quote:
         instrument = self._find_instrument(symbol)
@@ -238,4 +242,3 @@ class MockMarketDataProvider(MarketDataProvider):
             amount=close_price * Decimal(10_000 + index * 100),
             source=self.name,
         )
-

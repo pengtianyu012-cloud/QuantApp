@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 from decimal import Decimal
 
 from app.config import DISCLAIMER, TradingCostSettings, TradingRules, default_runtime_paths

@@ -1,4 +1,4 @@
-﻿from app.data.providers.base import (
+from app.data.providers.base import (
     Bar,
     Instrument,
     MarketDataError,

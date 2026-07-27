@@ -1,8 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal, ROUND_FLOOR
+from decimal import ROUND_FLOOR, Decimal
 
 from app.config import TradingCostSettings, TradingRules
 from app.data.providers import Instrument, Quote
@@ -62,14 +62,22 @@ class SimulatedMatcher:
         if fill_quantity <= 0:
             return self._defer("可参与成交量不足，订单顺延")
         fill_price = execution_price_with_slippage(order.side, quote.last_price)
-        status = OrderStatus.FILLED if fill_quantity == order.quantity else OrderStatus.PARTIALLY_FILLED
+        status = (
+            OrderStatus.FILLED if fill_quantity == order.quantity else OrderStatus.PARTIALLY_FILLED
+        )
         reason = "按盘口模拟成交" if has_order_book else "无盘口数据，使用最新价加滑点降级撮合"
-        return ExecutionResult(status, fill_quantity, fill_price, reason, degraded_model=not has_order_book)
+        return ExecutionResult(
+            status, fill_quantity, fill_price, reason, degraded_model=not has_order_book
+        )
 
     def _participation_quantity(self, order_quantity: int, interval_volume: int | None) -> int:
         if interval_volume is None:
             return order_quantity
-        allowed = int((Decimal(interval_volume) * self.config.max_volume_participation).to_integral_value(ROUND_FLOOR))
+        allowed = int(
+            (Decimal(interval_volume) * self.config.max_volume_participation).to_integral_value(
+                ROUND_FLOOR
+            )
+        )
         if allowed <= 0:
             return 0
         if order_quantity >= TradingRules().buy_lot_size:

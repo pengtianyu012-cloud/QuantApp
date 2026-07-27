@@ -1,8 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from app.config import APP_TIME_ZONE, TradingRules
 
@@ -42,7 +42,9 @@ def identify_security(symbol_or_code: str) -> SecurityIdentity:
     if len(code) != 6 or not code.isdigit():
         raise ValueError(f"股票代码必须是6位数字：{symbol_or_code}")
 
-    return SecurityIdentity(symbol=f"{code}.{exchange}", code=code, exchange=exchange, board=detect_board(code))
+    return SecurityIdentity(
+        symbol=f"{code}.{exchange}", code=code, exchange=exchange, board=detect_board(code)
+    )
 
 
 def detect_board(code: str) -> str:
@@ -66,7 +68,9 @@ def is_t_plus_one_sell_allowed(last_buy_date: date | None, sell_date: date) -> b
 
 
 def get_market_phase(moment: datetime, is_trading_day: bool) -> str:
-    local_moment = moment.astimezone(APP_TIME_ZONE) if moment.tzinfo else moment.replace(tzinfo=APP_TIME_ZONE)
+    local_moment = (
+        moment.astimezone(APP_TIME_ZONE) if moment.tzinfo else moment.replace(tzinfo=APP_TIME_ZONE)
+    )
     current_time = local_moment.time()
     if not is_trading_day:
         return "非交易日"

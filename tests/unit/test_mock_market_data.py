@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 from datetime import date
 
 from app.data.providers import MockMarketDataProvider
@@ -47,7 +47,9 @@ class MockMarketDataProviderTests(unittest.TestCase):
     def test_daily_bars_do_not_include_weekends(self) -> None:
         bars = self.provider.get_daily_bars("600519.SH", date(2026, 7, 24), date(2026, 7, 27))
 
-        self.assertEqual([bar.bar_time.date().isoformat() for bar in bars], ["2026-07-24", "2026-07-27"])
+        self.assertEqual(
+            [bar.bar_time.date().isoformat() for bar in bars], ["2026-07-24", "2026-07-27"]
+        )
 
 
 if __name__ == "__main__":

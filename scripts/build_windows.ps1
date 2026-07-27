@@ -15,4 +15,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller 未安装。请先运行：.\.venv\Scripts\python.exe -m pip install -r requirements.txt"
 }
 
-& $Python -m PyInstaller --clean $Spec
+& $Python -m PyInstaller --clean --noconfirm $Spec
+if ($LASTEXITCODE -ne 0) {
+    throw "PyInstaller 构建失败，退出码：$LASTEXITCODE"
+}

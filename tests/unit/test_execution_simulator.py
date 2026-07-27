@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
@@ -27,7 +27,9 @@ class ExecutionSimulatorTests(unittest.TestCase):
     def test_suspended_stock_is_deferred(self) -> None:
         instrument = replace(self.instrument, is_suspended=True)
 
-        result = self.matcher.evaluate(self.order, self.quote, instrument, datetime(2026, 7, 28, 9, 30))
+        result = self.matcher.evaluate(
+            self.order, self.quote, instrument, datetime(2026, 7, 28, 9, 30)
+        )
 
         self.assertEqual(result.status, OrderStatus.DEFERRED)
         self.assertIn("停牌", result.reason)
@@ -35,7 +37,9 @@ class ExecutionSimulatorTests(unittest.TestCase):
     def test_stale_quote_is_deferred(self) -> None:
         quote = replace(self.quote, delay_seconds=60)
 
-        result = self.matcher.evaluate(self.order, quote, self.instrument, datetime(2026, 7, 28, 9, 30))
+        result = self.matcher.evaluate(
+            self.order, quote, self.instrument, datetime(2026, 7, 28, 9, 30)
+        )
 
         self.assertEqual(result.status, OrderStatus.DEFERRED)
         self.assertIn("过期", result.reason)
@@ -43,7 +47,9 @@ class ExecutionSimulatorTests(unittest.TestCase):
     def test_limit_up_blocks_buy(self) -> None:
         quote = replace(self.quote, last_price=Decimal("1855.48"), prev_close=Decimal("1686.80"))
 
-        result = self.matcher.evaluate(self.order, quote, self.instrument, datetime(2026, 7, 28, 9, 30))
+        result = self.matcher.evaluate(
+            self.order, quote, self.instrument, datetime(2026, 7, 28, 9, 30)
+        )
 
         self.assertEqual(result.status, OrderStatus.DEFERRED)
         self.assertIn("涨停", result.reason)
@@ -52,7 +58,9 @@ class ExecutionSimulatorTests(unittest.TestCase):
         sell_order = replace(self.order, side=OrderSide.SELL)
         quote = replace(self.quote, last_price=Decimal("1518.12"), prev_close=Decimal("1686.80"))
 
-        result = self.matcher.evaluate(sell_order, quote, self.instrument, datetime(2026, 7, 28, 9, 30))
+        result = self.matcher.evaluate(
+            sell_order, quote, self.instrument, datetime(2026, 7, 28, 9, 30)
+        )
 
         self.assertEqual(result.status, OrderStatus.DEFERRED)
         self.assertIn("跌停", result.reason)

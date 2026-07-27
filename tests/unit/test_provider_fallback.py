@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 
 from app.data.providers import FallbackMarketDataProvider, MarketDataError, MockMarketDataProvider
 
@@ -15,10 +15,12 @@ class ProviderFallbackTests(unittest.TestCase):
         self.assertEqual(provider.last_provider_name, secondary.name)
 
     def test_fallback_raises_when_all_providers_fail(self) -> None:
-        provider = FallbackMarketDataProvider([
-            MockMarketDataProvider(fail=True),
-            MockMarketDataProvider(fail=True),
-        ])
+        provider = FallbackMarketDataProvider(
+            [
+                MockMarketDataProvider(fail=True),
+                MockMarketDataProvider(fail=True),
+            ]
+        )
 
         with self.assertRaises(MarketDataError) as context:
             provider.get_stock_list()

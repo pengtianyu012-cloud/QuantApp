@@ -1,7 +1,7 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Generic, TypeVar
 
 T = TypeVar("T")
@@ -24,13 +24,13 @@ class TtlMemoryCache(Generic[T]):
         entry = self._items.get(key)
         if entry is None:
             return None
-        if datetime.now(timezone.utc) >= entry.expires_at:
+        if datetime.now(UTC) >= entry.expires_at:
             self._items.pop(key, None)
             return None
         return entry.value
 
     def set(self, key: str, value: T) -> None:
-        self._items[key] = CacheEntry(value=value, expires_at=datetime.now(timezone.utc) + self.ttl)
+        self._items[key] = CacheEntry(value=value, expires_at=datetime.now(UTC) + self.ttl)
 
     def clear(self) -> None:
         self._items.clear()

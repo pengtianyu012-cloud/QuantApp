@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.config import default_runtime_paths
@@ -40,7 +40,7 @@ def initialize_database(db_path: Path | None = None) -> Path:
             connection.execute(statement)
         connection.execute(
             "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
-            (SCHEMA_VERSION, datetime.now(timezone.utc).isoformat()),
+            (SCHEMA_VERSION, datetime.now(UTC).isoformat()),
         )
     return path
 

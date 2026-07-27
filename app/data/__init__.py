@@ -1,4 +1,4 @@
-﻿from app.data.providers import (
+from app.data.providers import (
     FallbackMarketDataProvider,
     MarketDataError,
     MarketDataProvider,

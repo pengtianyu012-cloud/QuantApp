@@ -79,9 +79,41 @@
 - PyInstaller spec 与 Windows 脚本可检查
 - ruff、pytest、启动检查、打包配置检查均有报告
 
+### 阶段 7：工具链复验与 Windows 实际打包
+
+验收标准：
+
+- pytest、unittest、ruff 和 compileall 全部真实执行通过
+- PyInstaller 在当前 Windows 环境真实生成 exe
+- 打包后的 exe 可启动，构建失败可正确传播退出码
+
+### 阶段 8：模拟账户数据库持久化与恢复
+
+验收标准：
+
+- 账户、持仓、订单和成交在同一事务中可靠写入 SQLite
+- 应用重启后恢复现金、持仓、订单、成交和 T+1 可用数量
+- 重复写入与数据库异常有测试覆盖
+
+### 阶段 9：真实免费行情与后台刷新
+
+验收标准：
+
+- 真实数据源通过统一 `MarketDataProvider` 接口接入
+- 有超时、重试、退避、限流、缓存、字段校验和失败降级
+- 最新价与五档盘口能力经过可选真实网络测试
+- Qt 主线程不执行阻塞网络请求
+
+### 阶段 10：本轮完整集成验收
+
+验收标准：
+
+- 完整 pytest、ruff、启动和打包检查通过
+- README、数据源文档和本状态文件准确记录能力边界
+
 ## 当前阶段
 
-阶段 6：P2 数据质量、完整文档和 Windows 打包配置已完成。当前项目达到本轮可运行、可测试、可恢复开发状态。
+阶段 7 已完成并提交前待记录；下一阶段为阶段 8 模拟账户数据库持久化与恢复。
 
 ## 已完成内容
 
@@ -136,51 +168,52 @@
 - 已补充打包配置测试。
 - 已更新 README、数据源文档、数据质量文档、用户指南和回测假设文档。
 
+### 阶段 7：工具链复验与 Windows 实际打包
+
+- 已去除 `pyproject.toml` 的 UTF-8 BOM，pytest 9 可正常解析项目配置。
+- 已同步依赖范围，当前环境 `pandas 3.0.5`、`pytest 9.1.1` 在声明范围内。
+- 已使用 ruff 安全修复与格式化统一项目源码，并将字符串枚举迁移到 Python 3.11 `StrEnum`。
+- 已修复 `scripts/build_windows.ps1`：允许覆盖旧产物，并在 PyInstaller 失败时传播错误。
+- 已真实生成 `dist/A股量化模拟交易系统/A股量化模拟交易系统.exe`，启动存活检查通过。
+
 ## 修改的文件
 
-- `app/services/data_quality_service.py`
-- `app/services/__init__.py`
-- `tests/unit/test_data_quality_service.py`
-- `tests/unit/test_packaging_config.py`
-- `A股量化模拟交易系统.spec`
+- `pyproject.toml`
+- `requirements.txt`
 - `scripts/build_windows.ps1`
-- `README.md`
-- `docs/DATA_SOURCES.md`
-- `docs/DATA_QUALITY.md`
+- `app/**/*.py`（ruff 安全修复、格式化及 `StrEnum` 更新）
+- `tests/**/*.py`（ruff 格式化，不改变测试语义）
 - `DEVELOPMENT_STATUS.md`
 
 ## 测试结果
 
-阶段 6 已执行：
+阶段 7 已执行：
 
-- `.\.venv\Scripts\python.exe -m compileall -q main.py app tests`：通过。
+- `.\.venv\Scripts\python.exe -m pytest`：通过，59 个测试通过。
 - `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，59 个测试 OK。
-- `.\.venv\Scripts\python.exe -c "from app.main import build_application; app, window = build_application(['test']); print(window.windowTitle(), window.tabs.count()); window.close(); app.processEvents()"`：通过，输出 `A股量化模拟交易系统 10`。
-- `.\scripts\test.ps1`：通过，59 个测试 OK。
-- `.\scripts\check.ps1`：通过编译检查；ruff 未安装，脚本明确提示跳过 ruff。
-- `.\scripts\build_windows.ps1`：按预期失败，原因是 PyInstaller 未安装；脚本给出明确安装提示，未生成 exe，未伪称打包成功。
+- `.\.venv\Scripts\python.exe -m ruff check .`：通过，`All checks passed!`。
+- `.\.venv\Scripts\python.exe -m compileall -q main.py app tests`：通过。
+- 源码无界面启动检查：通过，输出 `A股量化模拟交易系统 10`。
+- `.\scripts\build_windows.ps1`：通过，PyInstaller 6.21.0 在 Windows 11 / Python 3.13.2 下真实生成 exe。
+- 打包 exe 启动存活 5 秒检查：通过，随后由测试进程主动关闭。
 
 ## 当前失败项
 
-- 当前虚拟环境仅确认 PySide6 已安装；`pandas`、`numpy`、`SQLAlchemy`、`pytest`、`ruff`、`PyInstaller` 尚未安装。
-- 数据库当前使用标准库 `sqlite3` 完成可运行初始化；尚未切换到 SQLAlchemy ORM。
-- 尚未接入真实免费行情数据源，真实最新价和真实五档盘口未验证。
-- UI 目前使用同步 Mock 数据读取，尚未实现后台 QThread/线程池刷新。
-- 订单、成交和账户状态尚未持久化写入数据库，应用重启后不会恢复账户。
-- 回测当前为基础骨架，不含完整卖出规则、组合再平衡、复权、分红、真实沪深300基准和真实财务披露时点控制。
-- 尚未执行真实 ruff 检查，因为 ruff 未安装。
-- 尚未实际生成 Windows exe，因为 PyInstaller 未安装。
+- 当前虚拟环境是 Python 3.13.2；项目仍以 Python 3.11 为最低版本和 ruff 目标，但尚未在 Python 3.11 环境复验。
+- 数据库当前使用标准库 `sqlite3` 初始化；订单、成交、账户和持仓尚未写入数据库，重启不会恢复。
+- 尚未接入真实免费行情数据源，真实最新价和真实五档盘口尚未验证。
+- UI 目前同步读取 Mock 数据，尚未实现后台 QThread/线程池刷新。
+- 回测仍为基础骨架，不含完整卖出、组合再平衡、复权、分红、真实沪深300和财务披露时点控制。
 
 ## 下一步准确任务
 
-1. 在用户允许修改虚拟环境和联网安装依赖时，执行 `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`。
-2. 依赖安装成功后运行真实 `.\.venv\Scripts\python.exe -m pytest` 和 `.\.venv\Scripts\python.exe -m ruff check .`。
-3. 接入订单、成交、账户状态到 SQLite，完成应用重启恢复。
-4. 实现后台 QThread/线程池行情刷新。
-5. 验证并接入一个合法免费行情数据源；真实字段必须实际测试，不得伪造。
+1. 设计并实现账户仓储层，将账户、持仓、订单和成交事务性持久化到 SQLite。
+2. 为首次初始化、成交后保存、重启恢复、T+1 可用数量和重复写入编写测试。
+3. 将 `TradingAppService` 与运行时数据库路径接线，保证应用重启恢复。
+4. 验证并接入合法免费行情数据源，实测最新价和五档盘口；缺失字段不得伪造。
+5. 使用 QThread/线程池实现后台刷新和失败降级。
 6. 扩展回测：卖出规则、组合再平衡、沪深300真实基准、复权/分红处理和财务披露时点控制。
-7. 安装 PyInstaller 后运行 `.\scripts\build_windows.ps1` 实际生成 Windows exe。
 
 ## 下一条恢复命令或任务
 
-从项目根目录执行：读取原始需求、读取 `DEVELOPMENT_STATUS.md`、查看 `git status --short` 和 `git log --oneline -5`。建议下一步先处理依赖安装与真实 ruff/pytest，再做数据库持久化恢复。
+从项目根目录执行恢复检查后，直接开始阶段 8：实现 `AccountRepository` 和 `SimulatedAccount` 的 SQLite 保存/恢复，并运行新增持久化测试与完整回归。

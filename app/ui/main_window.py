@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from decimal import Decimal
 
@@ -15,13 +15,13 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
-    QPushButton,
     QProgressBar,
+    QPushButton,
     QSpinBox,
     QStatusBar,
-    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -124,7 +124,9 @@ class QuantMainWindow(QMainWindow):
 
         self.quote_table = self.create_table(self.quote_headers(), self.quote_rows())
         layout.addWidget(self.wrap_group("自选股行情", self.quote_table))
-        layout.addWidget(self.create_notice("五档盘口委托量不会被称为实际成交量。真实行情源尚未接入。"))
+        layout.addWidget(
+            self.create_notice("五档盘口委托量不会被称为实际成交量。真实行情源尚未接入。")
+        )
         return page
 
     def create_market_data_page(self) -> QWidget:
@@ -210,8 +212,22 @@ class QuantMainWindow(QMainWindow):
         progress.setFormat("尚未开始")
         layout.addWidget(self.wrap_group("回测进度", progress))
         result = self.service.run_demo_backtest()
-        rows = [[result.strategy_name, self.rules.benchmark, self.format_pct(result.total_return), "Mock骨架", "尚未计算", f"成交{len(result.trades)}笔"]]
-        layout.addWidget(self.wrap_group("回测绩效", self.create_table(["策略", "基准", "总收益", "年化", "最大回撤", "状态"], rows)))
+        rows = [
+            [
+                result.strategy_name,
+                self.rules.benchmark,
+                self.format_pct(result.total_return),
+                "Mock骨架",
+                "尚未计算",
+                f"成交{len(result.trades)}笔",
+            ]
+        ]
+        layout.addWidget(
+            self.wrap_group(
+                "回测绩效",
+                self.create_table(["策略", "基准", "总收益", "年化", "最大回撤", "状态"], rows),
+            )
+        )
         return page
 
     def create_trading_page(self) -> QWidget:
@@ -241,8 +257,26 @@ class QuantMainWindow(QMainWindow):
         page = self.create_page()
         layout = page.layout()
         result = self.service.run_demo_backtest()
-        rows = [[result.strategy_name, self.rules.benchmark, self.format_pct(result.total_return), "Mock骨架", "尚未计算", "尚未计算", "尚未计算", f"成交{len(result.trades)}笔"]]
-        layout.addWidget(self.wrap_group("策略横向比较", self.create_table(["策略", "基准", "总收益", "年化", "最大回撤", "夏普", "胜率", "状态"], rows)))
+        rows = [
+            [
+                result.strategy_name,
+                self.rules.benchmark,
+                self.format_pct(result.total_return),
+                "Mock骨架",
+                "尚未计算",
+                "尚未计算",
+                "尚未计算",
+                f"成交{len(result.trades)}笔",
+            ]
+        ]
+        layout.addWidget(
+            self.wrap_group(
+                "策略横向比较",
+                self.create_table(
+                    ["策略", "基准", "总收益", "年化", "最大回撤", "夏普", "胜率", "状态"], rows
+                ),
+            )
+        )
         return page
 
     def create_settings_page(self) -> QWidget:
@@ -255,7 +289,11 @@ class QuantMainWindow(QMainWindow):
             ["过户费", str(self.costs.transfer_fee_rate), "集中配置"],
             ["滑点", f"{self.costs.slippage_bps} bps", "集中配置"],
             ["市场冲击", f"{self.costs.market_impact_bps} bps", "集中配置"],
-            ["成交量参与率上限", self.format_pct(self.costs.max_volume_participation), "撮合内核已使用"],
+            [
+                "成交量参与率上限",
+                self.format_pct(self.costs.max_volume_participation),
+                "撮合内核已使用",
+            ],
         ]
         refresh_rows = [
             ["自选股刷新", f"{self.refresh.watchlist_seconds}秒", "后台线程阶段后续优化"],
@@ -263,19 +301,36 @@ class QuantMainWindow(QMainWindow):
             ["网络超时", f"{self.refresh.request_timeout_seconds}秒", "真实数据源接入时使用"],
             ["最大重试", str(self.refresh.max_retries), "真实数据源接入时使用"],
         ]
-        layout.addWidget(self.wrap_group("交易成本假设", self.create_table(["项目", "当前值", "说明"], cost_rows)))
-        layout.addWidget(self.wrap_group("行情刷新与网络", self.create_table(["项目", "当前值", "说明"], refresh_rows)))
+        layout.addWidget(
+            self.wrap_group(
+                "交易成本假设", self.create_table(["项目", "当前值", "说明"], cost_rows)
+            )
+        )
+        layout.addWidget(
+            self.wrap_group(
+                "行情刷新与网络", self.create_table(["项目", "当前值", "说明"], refresh_rows)
+            )
+        )
         return page
 
     def create_diagnostics_page(self) -> QWidget:
         page = self.create_page()
         layout = page.layout()
-        dependency_rows = [[name, "已安装" if installed else "未安装", "依赖探查"] for name, installed in self.dependencies.items()]
-        layout.addWidget(self.wrap_group("依赖状态", self.create_table(["依赖", "状态", "说明"], dependency_rows)))
+        dependency_rows = [
+            [name, "已安装" if installed else "未安装", "依赖探查"]
+            for name, installed in self.dependencies.items()
+        ]
+        layout.addWidget(
+            self.wrap_group(
+                "依赖状态", self.create_table(["依赖", "状态", "说明"], dependency_rows)
+            )
+        )
         log_view = QTextEdit()
         log_view.setReadOnly(True)
         log_view.setMinimumHeight(130)
-        log_view.setText("日志文件：logs/quant_app.log\nMock行情、账户、风控和撮合内核已接入UI服务层。\n诊断导出尚未实现，导出内容必须过滤Token、Cookie和敏感字段。")
+        log_view.setText(
+            "日志文件：logs/quant_app.log\nMock行情、账户、风控和撮合内核已接入UI服务层。\n诊断导出尚未实现，导出内容必须过滤Token、Cookie和敏感字段。"
+        )
         layout.addWidget(self.wrap_group("日志预览", log_view))
         return page
 
@@ -318,7 +373,9 @@ class QuantMainWindow(QMainWindow):
     ) -> ManualOrderResult:
         target_symbol = symbol or self.symbol_input.text().strip()
         target_quantity = quantity or self.quantity_input.value()
-        target_price = limit_price if limit_price is not None else Decimal(str(self.price_input.value()))
+        target_price = (
+            limit_price if limit_price is not None else Decimal(str(self.price_input.value()))
+        )
         if confirm:
             reply = QMessageBox.question(
                 self,
@@ -382,7 +439,22 @@ class QuantMainWindow(QMainWindow):
         ]
 
     def quote_headers(self) -> list[str]:
-        return ["代码", "名称", "最新价", "涨跌额", "涨跌幅", "今开", "最高", "最低", "昨收", "成交量", "成交额", "换手率", "行情时间", "数据源"]
+        return [
+            "代码",
+            "名称",
+            "最新价",
+            "涨跌额",
+            "涨跌幅",
+            "今开",
+            "最高",
+            "最低",
+            "昨收",
+            "成交量",
+            "成交额",
+            "换手率",
+            "行情时间",
+            "数据源",
+        ]
 
     def quote_rows(self) -> list[list[str]]:
         return [self.quote_row(quote) for quote in self.service.get_watchlist_quotes()]
@@ -416,7 +488,9 @@ class QuantMainWindow(QMainWindow):
                     instrument.listed_date.isoformat(),
                     instrument.industry or "数据源不支持",
                     "停牌" if instrument.is_suspended else "正常",
-                    "否" if instrument.is_st or instrument.is_delisting or instrument.is_delisted else "是",
+                    "否"
+                    if instrument.is_st or instrument.is_delisting or instrument.is_delisted
+                    else "是",
                     self.instrument_note(instrument),
                 ]
             )
@@ -444,16 +518,18 @@ class QuantMainWindow(QMainWindow):
             last_price = latest_prices.get(position.symbol, position.cost_price)
             market_value = position.market_value(last_price)
             pnl = (last_price - position.cost_price) * Decimal(position.quantity)
-            rows.append([
-                position.symbol,
-                position.name,
-                str(position.quantity),
-                str(position.available_quantity),
-                str(position.cost_price),
-                str(last_price),
-                self.format_money(market_value),
-                self.format_money(pnl),
-            ])
+            rows.append(
+                [
+                    position.symbol,
+                    position.name,
+                    str(position.quantity),
+                    str(position.available_quantity),
+                    str(position.cost_price),
+                    str(last_price),
+                    self.format_money(market_value),
+                    self.format_money(pnl),
+                ]
+            )
         return rows
 
     def order_headers(self) -> list[str]:
@@ -463,7 +539,18 @@ class QuantMainWindow(QMainWindow):
         orders = self.service.account.orders[-limit:] if limit else self.service.account.orders
         if not orders:
             return [["-", "-", "-", "-", "-", "尚无订单", "-"]]
-        return [[order.order_id, order.symbol, order.side.value, str(order.quantity), str(order.limit_price or "市价"), order.status.value, order.reason] for order in reversed(orders)]
+        return [
+            [
+                order.order_id,
+                order.symbol,
+                order.side.value,
+                str(order.quantity),
+                str(order.limit_price or "市价"),
+                order.status.value,
+                order.reason,
+            ]
+            for order in reversed(orders)
+        ]
 
     def fill_headers(self) -> list[str]:
         return ["成交号", "订单号", "代码", "方向", "数量", "价格", "费用", "说明"]
@@ -474,16 +561,18 @@ class QuantMainWindow(QMainWindow):
         rows: list[list[str]] = []
         for fill in reversed(self.service.account.fills):
             fee = fill.commission + fill.tax + fill.transfer_fee + fill.slippage
-            rows.append([
-                fill.fill_id,
-                fill.order_id,
-                fill.symbol,
-                fill.side.value,
-                str(fill.quantity),
-                str(fill.price),
-                self.format_money(fee),
-                "降级撮合" if fill.degraded_model else "正常撮合",
-            ])
+            rows.append(
+                [
+                    fill.fill_id,
+                    fill.order_id,
+                    fill.symbol,
+                    fill.side.value,
+                    str(fill.quantity),
+                    str(fill.price),
+                    self.format_money(fee),
+                    "降级撮合" if fill.degraded_model else "正常撮合",
+                ]
+            )
         return rows
 
     def create_page(self) -> QWidget:
@@ -526,7 +615,11 @@ class QuantMainWindow(QMainWindow):
         card.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(card)
         layout.setSpacing(4)
-        for text, name in ((title, "metricTitle"), (value, "metricValue"), (detail, "metricDetail")):
+        for text, name in (
+            (title, "metricTitle"),
+            (value, "metricValue"),
+            (detail, "metricDetail"),
+        ):
             label = QLabel(text)
             label.setObjectName(name)
             label.setWordWrap(True)
@@ -566,9 +659,3 @@ class QuantMainWindow(QMainWindow):
     @staticmethod
     def format_pct(value: Decimal) -> str:
         return f"{value * Decimal('100'):.2f}%"
-
-
-
-
-
-

@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 from datetime import date
 from decimal import Decimal
 
@@ -34,8 +34,12 @@ class BuiltinStrategyTests(unittest.TestCase):
 
     def test_low_valuation_signal_includes_mock_warning(self) -> None:
         strategy = LowValuationFactorStrategy()
-        indicators = self.provider.get_financial_indicators(["000001.SZ"], date(2026, 6, 30))["000001.SZ"]
-        signals = strategy.generate_from_financials("000001.SZ", indicators, self.bars[-1].bar_time, self.provider.name)
+        indicators = self.provider.get_financial_indicators(["000001.SZ"], date(2026, 6, 30))[
+            "000001.SZ"
+        ]
+        signals = strategy.generate_from_financials(
+            "000001.SZ", indicators, self.bars[-1].bar_time, self.provider.name
+        )
 
         self.assertTrue(signals)
         self.assertIn("Mock数据", signals[0].reason)
@@ -48,7 +52,9 @@ class BuiltinStrategyTests(unittest.TestCase):
         strategy.on_market_data(quote, book)
         self.assertEqual(strategy.generate_signals(), [])
 
-        moved_quote = type(quote)(**{**quote.__dict__, "last_price": quote.last_price + Decimal("0.01")})
+        moved_quote = type(quote)(
+            **{**quote.__dict__, "last_price": quote.last_price + Decimal("0.01")}
+        )
         strategy.on_market_data(moved_quote, book)
         self.assertTrue(strategy.generate_signals())
 

@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 from decimal import Decimal
 
 from app.execution import calculate_trade_cost, execution_price_with_slippage

@@ -1,4 +1,4 @@
-﻿import os
+import os
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

@@ -1,24 +1,24 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 
-class OrderSide(str, Enum):
+class OrderSide(StrEnum):
     BUY = "买入"
     SELL = "卖出"
 
 
-class OrderType(str, Enum):
+class OrderType(StrEnum):
     MARKET = "市价模拟单"
     LIMIT = "限价模拟单"
     NEXT_OPEN = "下一交易日开盘单"
     CANCEL = "撤单"
 
 
-class OrderStatus(str, Enum):
+class OrderStatus(StrEnum):
     PENDING_SUBMIT = "待提交"
     PENDING_FILL = "待成交"
     PARTIALLY_FILLED = "部分成交"

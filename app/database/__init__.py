@@ -1,4 +1,4 @@
-﻿from app.database.connection import (
+from app.database.connection import (
     DEFAULT_DATABASE_NAME,
     connect_database,
     default_database_path,

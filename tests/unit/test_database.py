@@ -1,8 +1,14 @@
-﻿import unittest
-from tempfile import TemporaryDirectory
+import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from app.database import CORE_TABLES, SCHEMA_VERSION, get_schema_version, initialize_database, list_tables
+from app.database import (
+    CORE_TABLES,
+    SCHEMA_VERSION,
+    get_schema_version,
+    initialize_database,
+    list_tables,
+)
 
 
 class DatabaseTests(unittest.TestCase):

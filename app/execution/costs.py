@@ -1,7 +1,7 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from app.config import TradingCostSettings
 from app.models import OrderSide
@@ -21,7 +21,13 @@ class TradeCostBreakdown:
 
     @property
     def total(self) -> Decimal:
-        return self.commission + self.stamp_tax + self.transfer_fee + self.slippage + self.market_impact
+        return (
+            self.commission
+            + self.stamp_tax
+            + self.transfer_fee
+            + self.slippage
+            + self.market_impact
+        )
 
 
 def quantize_money(value: Decimal) -> Decimal:
@@ -42,7 +48,9 @@ def calculate_trade_cost(
     config = settings or TradingCostSettings()
     notional = quantize_money(price * Decimal(quantity))
     commission = max(quantize_money(notional * config.commission_rate), config.min_commission)
-    stamp_tax = quantize_money(notional * config.stamp_tax_rate) if side is OrderSide.SELL else Decimal("0")
+    stamp_tax = (
+        quantize_money(notional * config.stamp_tax_rate) if side is OrderSide.SELL else Decimal("0")
+    )
     transfer_fee = quantize_money(notional * config.transfer_fee_rate)
     slippage = quantize_money(notional * config.slippage_bps / BPS_DIVISOR)
     market_impact = quantize_money(notional * config.market_impact_bps / BPS_DIVISOR)

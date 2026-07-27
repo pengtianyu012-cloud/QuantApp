@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 from datetime import datetime
 from decimal import Decimal
 
@@ -36,9 +36,15 @@ class TradingRulesTests(unittest.TestCase):
         self.assertTrue(is_t_plus_one_sell_allowed(buy_date, datetime(2026, 7, 28).date()))
 
     def test_market_phase_uses_explicit_trading_day(self) -> None:
-        self.assertEqual(get_market_phase(datetime(2026, 7, 27, 9, 20, tzinfo=APP_TIME_ZONE), True), "集合竞价")
-        self.assertEqual(get_market_phase(datetime(2026, 7, 27, 12, 0, tzinfo=APP_TIME_ZONE), True), "午间休市")
-        self.assertEqual(get_market_phase(datetime(2026, 7, 26, 10, 0, tzinfo=APP_TIME_ZONE), False), "非交易日")
+        self.assertEqual(
+            get_market_phase(datetime(2026, 7, 27, 9, 20, tzinfo=APP_TIME_ZONE), True), "集合竞价"
+        )
+        self.assertEqual(
+            get_market_phase(datetime(2026, 7, 27, 12, 0, tzinfo=APP_TIME_ZONE), True), "午间休市"
+        )
+        self.assertEqual(
+            get_market_phase(datetime(2026, 7, 26, 10, 0, tzinfo=APP_TIME_ZONE), False), "非交易日"
+        )
 
     def test_price_limit_rules(self) -> None:
         main_board = calculate_price_limits(Decimal("10"), "主板")

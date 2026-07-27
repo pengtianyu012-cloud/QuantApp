@@ -1,8 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from uuid import uuid4
 
 from app.config import TradingCostSettings, TradingRules
@@ -68,7 +68,9 @@ class SimulatedAccount:
 
     def update_order_status(self, order: Order, status: OrderStatus, reason: str = "") -> Order:
         updated_order = replace(order, status=status, reason=reason)
-        self.orders = [updated_order if item.order_id == order.order_id else item for item in self.orders]
+        self.orders = [
+            updated_order if item.order_id == order.order_id else item for item in self.orders
+        ]
         return updated_order
 
     def apply_fill(
@@ -105,7 +107,9 @@ class SimulatedAccount:
             if cash_required > self.cash:
                 raise AccountError("可用现金不足")
             self.cash = quantize_money(self.cash - cash_required)
-            self._increase_position(order.symbol, stock_name or order.symbol, quantity, price, filled_at.date())
+            self._increase_position(
+                order.symbol, stock_name or order.symbol, quantity, price, filled_at.date()
+            )
         else:
             self._decrease_position(order.symbol, quantity, price, filled_at.date())
             cash_in = costs.notional - costs.total
@@ -117,7 +121,9 @@ class SimulatedAccount:
         for position in self.positions.values():
             position.available_quantity = position.quantity
 
-    def _increase_position(self, symbol: str, name: str, quantity: int, price: Decimal, buy_date: date) -> None:
+    def _increase_position(
+        self, symbol: str, name: str, quantity: int, price: Decimal, buy_date: date
+    ) -> None:
         position = self.positions.get(symbol)
         if position is None:
             self.positions[symbol] = Position(
@@ -136,7 +142,9 @@ class SimulatedAccount:
         position.quantity = new_quantity
         position.last_buy_date = buy_date
 
-    def _decrease_position(self, symbol: str, quantity: int, price: Decimal, sell_date: date) -> None:
+    def _decrease_position(
+        self, symbol: str, quantity: int, price: Decimal, sell_date: date
+    ) -> None:
         position = self.positions.get(symbol)
         if position is None:
             raise AccountError("没有可卖持仓")

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -58,7 +58,9 @@ class DailyBacktestEngine:
         position_quantity = 0
         trades: list[BacktestTrade] = []
         if len(bars) < 2:
-            return BacktestResult(strategy.name, symbol, start_date, end_date, cash, position_quantity, tuple())
+            return BacktestResult(
+                strategy.name, symbol, start_date, end_date, cash, position_quantity, tuple()
+            )
 
         for index in range(1, len(bars) - 1):
             visible_bars = bars[: index + 1]
@@ -73,7 +75,9 @@ class DailyBacktestEngine:
                 continue
             cash -= cash_required
             position_quantity += quantity
-            trades.append(self._trade_from_signal(symbol, signal, visible_bars[-1], next_bar, quantity))
+            trades.append(
+                self._trade_from_signal(symbol, signal, visible_bars[-1], next_bar, quantity)
+            )
             break
         final_cash = cash + Decimal(position_quantity) * bars[-1].close_price
         return BacktestResult(

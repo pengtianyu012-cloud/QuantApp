@@ -1,22 +1,22 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from app.data.providers import Bar, OrderBook, Quote
 from app.models import Fill, Order
 
 
-class StrategyState(str, Enum):
+class StrategyState(StrEnum):
     STOPPED = "已停止"
     RUNNING = "运行中"
     PAUSED = "已暂停"
 
 
-class SignalDirection(str, Enum):
+class SignalDirection(StrEnum):
     BUY = "买入"
     SELL = "卖出"
     HOLD = "观察"

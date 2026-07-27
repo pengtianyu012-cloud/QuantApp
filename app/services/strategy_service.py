@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -49,14 +49,26 @@ class StrategyService:
             StrategyStatus(
                 name=strategy.name,
                 state=strategy.state,
-                last_run=strategy.context.last_run_at.isoformat() if strategy.context.last_run_at else "-",
-                signal_count=len([signal for signal in self.latest_signals if signal.strategy_name == strategy.name]),
+                last_run=strategy.context.last_run_at.isoformat()
+                if strategy.context.last_run_at
+                else "-",
+                signal_count=len(
+                    [
+                        signal
+                        for signal in self.latest_signals
+                        if signal.strategy_name == strategy.name
+                    ]
+                ),
             )
             for strategy in self.strategies.values()
         ]
 
     def run_daily_signals(self, symbols: list[str] | None = None) -> list[StrategySignal]:
-        selected_symbols = symbols or [instrument.symbol for instrument in self.market_data.get_stock_list() if instrument.eligible]
+        selected_symbols = symbols or [
+            instrument.symbol
+            for instrument in self.market_data.get_stock_list()
+            if instrument.eligible
+        ]
         signals: list[StrategySignal] = []
         end_date = date(2026, 7, 27)
         start_date = end_date - timedelta(days=90)
@@ -70,7 +82,11 @@ class StrategyService:
             low_value.initialize()
             if isinstance(low_value, LowValuationFactorStrategy):
                 indicators = self.market_data.get_financial_indicators([symbol], end_date)[symbol]
-                signals.extend(low_value.generate_from_financials(symbol, indicators, bars[-1].bar_time, self.market_data.name))
+                signals.extend(
+                    low_value.generate_from_financials(
+                        symbol, indicators, bars[-1].bar_time, self.market_data.name
+                    )
+                )
         self.latest_signals = signals
         return signals
 
@@ -83,7 +99,12 @@ class StrategyService:
         order_book = self.market_data.get_order_book(symbol)
         strategy.on_market_data(quote, order_book)
         moved_quote = self.market_data.get_latest_quotes([symbol])[0]
-        moved_quote = type(moved_quote)(**{**moved_quote.__dict__, "last_price": moved_quote.last_price + moved_quote.last_price * 0 + 1})
+        moved_quote = type(moved_quote)(
+            **{
+                **moved_quote.__dict__,
+                "last_price": moved_quote.last_price + moved_quote.last_price * 0 + 1,
+            }
+        )
         strategy.on_market_data(moved_quote, order_book)
         signals = strategy.generate_signals()
         self.latest_signals.extend(signals)

@@ -1,4 +1,4 @@
-﻿from app.strategies.base import SignalDirection, Strategy, StrategySignal, StrategyState
+from app.strategies.base import SignalDirection, Strategy, StrategySignal, StrategyState
 from app.strategies.builtin import (
     LowValuationFactorStrategy,
     MomentumSelectionStrategy,
