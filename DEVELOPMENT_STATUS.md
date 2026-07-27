@@ -81,44 +81,73 @@
 
 ## 当前阶段
 
-阶段 0：可恢复开发基线已完成。当前进入阶段 1：P0 工程骨架与核心配置。
+阶段 1：P0 工程骨架与核心配置已完成。当前进入阶段 2：P0 数据库与 Mock 行情。
 
 ## 已完成内容
 
+### 阶段 0：可恢复开发基线
+
 - 已正确以 UTF-8 读取原始需求附件。
-- 已确认当前工作区初始状态：根目录包含 `.venv`、`__pycache__`、`main.py`。
-- 已确认当前原先没有 Git 仓库，并已初始化 Git 仓库。
-- 已确认 `DEVELOPMENT_STATUS.md` 原先不存在，并已创建恢复记录。
+- 已初始化 Git 仓库。
 - 已创建 `.gitignore`，避免提交 `.venv`、缓存、日志、运行数据库和本地密钥。
-- 上一轮已在现有 `main.py` 基础上升级为 PySide6 六页原型，并通过语法和无界面实例化检查。
-- 已创建阶段 0 基线提交：`24ba712 chore: establish resumable development baseline`。
+- 已创建 `DEVELOPMENT_STATUS.md` 并提交可恢复基线。
+- 阶段 0 提交：`24ba712 chore: establish resumable development baseline`。
+- 阶段 0 状态同步提交：`eb4a841 docs: record baseline completion`。
+
+### 阶段 1：P0 工程骨架与核心配置
+
+- 已建立 `app/` 分层结构：`config`、`ui`、`models`、`services`、`utils`、`data`、`strategies`、`engine`、`execution`、`risk`、`portfolio`、`backtest`、`database`。
+- 已将根目录 `main.py` 改为薄启动器，真实启动逻辑迁移到 `app/main.py`。
+- 已将 PySide6 主窗口迁移到 `app/ui/main_window.py`，并扩展为 10 个核心页面。
+- 未接线功能均在 UI 中标注“尚未实现”，未伪称真实行情、策略或撮合能力可用。
+- 已集中配置交易规则、成本假设、刷新参数、运行路径和免责声明。
+- 已配置滚动日志，运行日志写入 `logs/quant_app.log`，日志文件不纳入版本控制。
+- 已创建 README、基础 docs、requirements、pyproject、PowerShell 开发脚本和测试。
+- 已处理 Windows 环境缺少 `tzdata` 时 `Asia/Shanghai` 无法加载的问题，回退到命名 UTC+8 时区，并把 `tzdata` 加入依赖清单。
 
 ## 修改的文件
 
-- `main.py`：上一轮升级，已验证并纳入阶段 0 基线提交。
-- `DEVELOPMENT_STATUS.md`：本阶段新建并更新。
-- `.gitignore`：本阶段新建。
+- `main.py`
+- `.gitignore`
+- `.env.example`
+- `README.md`
+- `pyproject.toml`
+- `requirements.txt`
+- `app/**`
+- `tests/**`
+- `docs/**`
+- `scripts/**`
+- `data/.gitkeep`
+- `logs/.gitkeep`
+- `DEVELOPMENT_STATUS.md`
 
 ## 测试结果
 
-上一轮已执行：
+阶段 1 已执行：
 
-- `.\.venv\Scripts\python.exe -m py_compile main.py`：通过。
-- `.\.venv\Scripts\python.exe -c "import main; print(main.TradingRules().benchmark)"`：通过，输出 `沪深300`。
-- `.\.venv\Scripts\python.exe -c "from PySide6.QtWidgets import QApplication; import main; app = QApplication([]); window = main.QuantMainWindow(); print(window.windowTitle(), window.tabs.count())"`：通过，输出 `A股量化模拟交易系统 6`。
+- `.\.venv\Scripts\python.exe -m compileall -q main.py app tests`：通过。
+- `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，9 个测试 OK。
+- `.\.venv\Scripts\python.exe -c "from app.main import build_application; app, window = build_application(['test']); print(window.windowTitle(), window.tabs.count()); window.close(); app.processEvents()"`：通过，输出 `A股量化模拟交易系统 10`。
+- `.\scripts\check.ps1`：通过编译检查；ruff 未安装，脚本明确提示跳过 ruff。
+- `.\scripts\test.ps1`：通过，9 个测试 OK。
 
 ## 当前失败项
 
-- 尚未建立 `app/` 分层工程结构。
-- 尚未实现数据库、行情接口、撮合、风控、策略、回测和完整测试。
-- 尚未配置 README、pyproject、requirements 和开发脚本。
+- 当前虚拟环境仅确认 PySide6 已安装；`pandas`、`numpy`、`SQLAlchemy`、`pytest`、`ruff`、`PyInstaller` 尚未安装。
+- 尚未实现数据库初始化和数据表。
+- 尚未定义 `MarketDataProvider` 抽象接口和 Mock 数据源。
+- 尚未实现行情字段校验、缓存、限流、重试和降级。
+- 尚未实现模拟账户、撮合、风控、策略和回测。
+- 尚未执行真实 ruff 检查，因为 ruff 未安装。
 
 ## 下一步准确任务
 
-1. 开始阶段 1：创建工程骨架、配置、日志、README、pyproject、requirements 和开发脚本。
-2. 运行阶段 1 的导入检查、静态检查或最小启动检查。
-3. 更新 `DEVELOPMENT_STATUS.md` 并提交阶段 1 稳定结果。
+1. 开始阶段 2：实现 SQLite 数据库初始化机制和核心表结构。
+2. 定义 `MarketDataProvider` 抽象接口。
+3. 实现 Mock 行情数据源，支持股票列表、最新行情、五档盘口、日线、交易日历、财务指标空能力和健康检查。
+4. 增加数据字段校验、数据源降级状态和对应单元测试。
+5. 运行编译检查、unittest、启动检查，更新 `DEVELOPMENT_STATUS.md` 并提交阶段 2 稳定结果。
 
 ## 下一条恢复命令或任务
 
-从项目根目录执行：读取原始需求、读取 `DEVELOPMENT_STATUS.md`、查看 `git status --short` 和 `git log --oneline -5`，然后继续“阶段 1：P0 工程骨架与核心配置”。
+从项目根目录执行：读取原始需求、读取 `DEVELOPMENT_STATUS.md`、查看 `git status --short` 和 `git log --oneline -5`，然后继续“阶段 2：P0 数据库与 Mock 行情”。优先任务是创建 `app/database` 初始化模块和 `app/data/providers` 统一行情接口。

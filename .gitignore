@@ -13,12 +13,15 @@ htmlcov/
 venv/
 
 # Runtime data
-logs/
+logs/*
+!logs/.gitkeep
 *.log
 data/*.db
 data/*.sqlite
 data/*.sqlite3
 data/cache/
+data/config/
+!data/.gitkeep
 
 # Local secrets
 .env
