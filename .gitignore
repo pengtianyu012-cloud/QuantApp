@@ -1,0 +1,36 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Runtime data
+logs/
+*.log
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/cache/
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+build/
+dist/
+*.spec.bak
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
