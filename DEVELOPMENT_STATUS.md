@@ -81,20 +81,22 @@
 
 ## 当前阶段
 
-阶段 0：可恢复开发基线进行中。
+阶段 0：可恢复开发基线已完成。当前进入阶段 1：P0 工程骨架与核心配置。
 
 ## 已完成内容
 
 - 已正确以 UTF-8 读取原始需求附件。
 - 已确认当前工作区初始状态：根目录包含 `.venv`、`__pycache__`、`main.py`。
-- 已确认当前没有 Git 仓库。
-- 已确认 `DEVELOPMENT_STATUS.md` 原先不存在。
+- 已确认当前原先没有 Git 仓库，并已初始化 Git 仓库。
+- 已确认 `DEVELOPMENT_STATUS.md` 原先不存在，并已创建恢复记录。
+- 已创建 `.gitignore`，避免提交 `.venv`、缓存、日志、运行数据库和本地密钥。
 - 上一轮已在现有 `main.py` 基础上升级为 PySide6 六页原型，并通过语法和无界面实例化检查。
+- 已创建阶段 0 基线提交：`24ba712 chore: establish resumable development baseline`。
 
 ## 修改的文件
 
-- `main.py`：上一轮升级，已验证但尚未提交。
-- `DEVELOPMENT_STATUS.md`：本阶段新建。
+- `main.py`：上一轮升级，已验证并纳入阶段 0 基线提交。
+- `DEVELOPMENT_STATUS.md`：本阶段新建并更新。
 - `.gitignore`：本阶段新建。
 
 ## 测试结果
@@ -107,15 +109,15 @@
 
 ## 当前失败项
 
-- 尚未初始化 Git，因此还没有稳定提交点。
 - 尚未建立 `app/` 分层工程结构。
 - 尚未实现数据库、行情接口、撮合、风控、策略、回测和完整测试。
+- 尚未配置 README、pyproject、requirements 和开发脚本。
 
 ## 下一步准确任务
 
-1. 初始化 Git 仓库。
-2. 提交阶段 0 可恢复基线。
-3. 开始阶段 1：创建工程骨架、配置、日志、README、pyproject、requirements 和开发脚本。
+1. 开始阶段 1：创建工程骨架、配置、日志、README、pyproject、requirements 和开发脚本。
+2. 运行阶段 1 的导入检查、静态检查或最小启动检查。
+3. 更新 `DEVELOPMENT_STATUS.md` 并提交阶段 1 稳定结果。
 
 ## 下一条恢复命令或任务
 
