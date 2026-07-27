@@ -73,7 +73,7 @@ main.py              根启动入口
 
 ## 安装依赖
 
-当前环境依赖探查显示 PySide6 已安装，pandas、numpy、SQLAlchemy、pytest、ruff、PyInstaller 尚未安装。后续如允许修改虚拟环境，可执行：
+安装或同步全部运行、测试与打包依赖：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt

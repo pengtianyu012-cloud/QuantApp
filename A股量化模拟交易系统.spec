@@ -2,7 +2,10 @@
 
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_data_files
+
 ROOT = Path(SPECPATH)
+AKSHARE_DATA_FILES = collect_data_files("akshare")
 
 block_cipher = None
 
@@ -15,7 +18,8 @@ a = Analysis(
         (str(ROOT / "docs"), "docs"),
         (str(ROOT / "data" / ".gitkeep"), "data"),
         (str(ROOT / "logs" / ".gitkeep"), "logs"),
-    ],
+    ]
+    + AKSHARE_DATA_FILES,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

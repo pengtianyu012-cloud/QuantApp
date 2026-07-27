@@ -10,6 +10,7 @@ class PackagingConfigTests(unittest.TestCase):
         text = spec.read_text(encoding="utf-8")
         self.assertIn("main.py", text)
         self.assertIn("docs", text)
+        self.assertIn('collect_data_files("akshare")', text)
 
     def test_windows_scripts_exist(self) -> None:
         for script_name in ("run_dev.ps1", "test.ps1", "check.ps1", "build_windows.ps1"):

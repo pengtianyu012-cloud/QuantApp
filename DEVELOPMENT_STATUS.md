@@ -113,7 +113,7 @@
 
 ## 当前阶段
 
-阶段 9 已完成并提交前待记录；下一阶段为阶段 10 本轮完整集成验收。
+阶段 10 已完成，数据库持久化、真实公开研究行情和 Windows 冻结版均已通过本轮验收。
 
 ## 已完成内容
 
@@ -199,8 +199,20 @@
 - Qt 使用 `QThreadPool/QRunnable` 后台刷新自选股和全市场主表；测试验证网络调用线程不是 Qt 主线程。
 - 总览连接状态、行情延迟、实时行情表和市场数据表会随后台结果更新。
 - AkShare 软件为 MIT License，但其数据说明仅定位学术研究并提示商业风险；公开网页行情无服务等级承诺，文档已明确。
+- 阶段 9 提交：`1290103 feat: add real market data and background refresh`。
+
+### 阶段 10：本轮完整集成验收
+
+- 已复核 README、架构说明和用户指南，移除“尚未接入真实行情、后台线程和账户持久化”的过期描述。
+- 首次重新打包发现 frozen 应用缺少 `akshare/file_fold/calendar.json`，异常窗口 traceback 已实际提取并定位。
+- PyInstaller spec 现使用标准 `collect_data_files("akshare")` 收集 8 个包数据文件，并新增打包配置回归断言。
+- 修正版 Mock 冻结版已出现正常应用窗口，并创建 `%LOCALAPPDATA%/QuantApp` 下的数据库、日志、缓存和配置目录。
+- 修正版 public 冻结版连续运行 45 秒，跨过后台行情和低频股票主表任务窗口，仍为正常应用窗口且无异常对话框。
+- PyInstaller 告警复核未发现当前 SQLite、Qt、AkShare/腾讯行情调用链的阻断缺失项；其余为跨平台或 pandas/SQLAlchemy 可选后端。
 
 ## 修改的文件
+
+### 阶段 9
 
 - `app/data/providers/akshare_public.py`
 - `app/data/providers/http_client.py`
@@ -224,6 +236,15 @@
 - `docs/DATA_QUALITY.md`
 - `DEVELOPMENT_STATUS.md`
 
+### 阶段 10
+
+- `A股量化模拟交易系统.spec`
+- `tests/unit/test_packaging_config.py`
+- `README.md`
+- `docs/ARCHITECTURE.md`
+- `docs/USER_GUIDE.md`
+- `DEVELOPMENT_STATUS.md`
+
 ## 测试结果
 
 阶段 9 已执行：
@@ -236,8 +257,24 @@
 - `RUN_REAL_MARKET_DATA_TESTS=1` 真实网络测试：通过，2 个测试在 32.45 秒内完成。
 - public 模式 offscreen UI：窗口构造 0.1 秒，真实 `600519.SH` 报价后台加载成功；首次验证发现全市场列表 8 秒超时不足，已为低频主表单独调整到 30 秒并由真实套件复验。
 
+阶段 10 已执行：
+
+- `.\.venv\Scripts\python.exe -m pytest`：通过，74 个测试通过，2 个真实网络测试默认跳过。
+- `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，76 个测试运行，2 个跳过。
+- `.\.venv\Scripts\python.exe -m ruff check .`：通过，`All checks passed!`。
+- `.\.venv\Scripts\python.exe -m compileall -q main.py app tests`：通过。
+- `.\.venv\Scripts\python.exe -m pip check`：通过，`No broken requirements found.`。
+- `scripts/test.ps1` 与 `scripts/check.ps1`：通过。
+- Mock 源码 offscreen 启动：10 个页面、账户仓储就绪、无持久化错误。
+- public 源码 offscreen 启动：10 个页面，构造耗时 0.021 秒，未在 Qt 主线程阻塞网络。
+- `RUN_REAL_MARKET_DATA_TESTS=1`：真实网络集成测试 2 个通过，耗时 33.47 秒。
+- `scripts/build_windows.ps1`：修复 AkShare 包数据后成功生成 Windows onedir 包。
+- Mock 冻结版：正常窗口启动，数据库位于 `%LOCALAPPDATA%/QuantApp/data/quant_app.sqlite3`。
+- public 冻结版：后台运行 45 秒保持正常窗口，无未处理异常。
+
 ## 当前失败项
 
+- 本轮数据库持久化、真实行情接入和 Windows 打包启动没有阻断失败项。
 - 当前虚拟环境是 Python 3.13.2；项目仍以 Python 3.11 为最低版本和 ruff 目标，但尚未在 Python 3.11 环境复验。
 - 账户仓储当前基于标准库 `sqlite3` 的显式事务，尚未迁移到 SQLAlchemy ORM；不影响当前 SQLite 持久化能力。
 - 回测仍为基础骨架，不含完整卖出、组合再平衡、复权、分红、真实沪深300和财务披露时点控制。
@@ -247,12 +284,11 @@
 
 ## 下一步准确任务
 
-1. 运行完整 pytest、unittest、ruff、compileall 和 Mock/public 源码启动检查。
-2. 使用更新后的依赖重新执行 `.\scripts\build_windows.ps1`，检查 AkShare、requests、truststore 和 Qt 是否完整打包。
-3. 启动新 exe 做存活检查，并确认 frozen 模式使用 `%LOCALAPPDATA%/QuantApp`。
-4. 复核 README、数据源文档、架构文档和用户指南中的能力边界。
-5. 更新本文件为阶段 10 完成状态并创建最终稳定提交。
+1. 在独立 Python 3.11 虚拟环境中重跑 pytest、ruff、真实网络测试和 Windows 打包，关闭最低版本复验项。
+2. 开始阶段 11 回测完整化：先接入真实沪深300日线基准并增加无未来数据测试。
+3. 再实现组合卖出、再平衡、分红送股和一致复权现金处理，并补事件级回测测试。
+4. 评估有明确授权和稳定服务条款的数据源，再决定是否补真实分时与历史财务披露时点。
 
 ## 下一条恢复命令或任务
 
-从项目根目录执行恢复检查后，直接开始阶段 10：运行全套验收、重新打包包含真实行情依赖的 Windows exe、启动检查并更新最终状态。
+从项目根目录依次执行 `git status --short --branch`、`git log -5 --oneline`、`.\.venv\Scripts\python.exe -m pytest`；确认阶段 10 提交存在且工作区干净后，从“Python 3.11 独立环境复验”继续，不要重做阶段 8 至阶段 10。
