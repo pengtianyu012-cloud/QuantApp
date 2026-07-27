@@ -169,13 +169,9 @@ class QuantMainWindow(QMainWindow):
         selector_row.addWidget(preview_button)
         layout.addLayout(selector_row)
 
-        rows = [
-            ["均线趋势", "短长均线趋势", "阶段5接入", "尚未实现"],
-            ["动量选股", "区间收益和流动性", "阶段5接入", "尚未实现"],
-            ["低估值因子", "PE/PB/ROE", "阶段6接入", "尚未实现"],
-            ["盘口与量价演示", "实时引擎验证", "阶段5接入", "尚未实现"],
-        ]
-        layout.addWidget(self.wrap_group("内置策略库", self.create_table(["策略", "核心逻辑", "开发阶段", "状态"], rows)))
+        rows = self.strategy_status_rows()
+        self.strategy_table = self.create_table(["策略", "状态", "最近运行", "信号数"], rows)
+        layout.addWidget(self.wrap_group("内置策略库", self.strategy_table))
         return page
 
     def create_selection_page(self) -> QWidget:
@@ -189,7 +185,7 @@ class QuantMainWindow(QMainWindow):
         layout.addLayout(export_row)
         self.selection_table = self.create_table(
             ["策略", "代码", "名称", "评分", "入选原因", "信号时间", "建议仓位", "风控后仓位"],
-            [["尚未实现", "-", "-", "-", "阶段5接入策略信号", "-", "-", "-"]],
+            self.selection_rows(),
         )
         layout.addWidget(self.wrap_group("选股结果", self.selection_table))
         return page
@@ -213,7 +209,8 @@ class QuantMainWindow(QMainWindow):
         progress.setValue(0)
         progress.setFormat("尚未开始")
         layout.addWidget(self.wrap_group("回测进度", progress))
-        rows = [[name, self.rules.benchmark, "-", "-", "-", "尚未实现"] for name in ("均线趋势", "动量选股", "低估值因子")]
+        result = self.service.run_demo_backtest()
+        rows = [[result.strategy_name, self.rules.benchmark, self.format_pct(result.total_return), "Mock骨架", "尚未计算", f"成交{len(result.trades)}笔"]]
         layout.addWidget(self.wrap_group("回测绩效", self.create_table(["策略", "基准", "总收益", "年化", "最大回撤", "状态"], rows)))
         return page
 
@@ -243,7 +240,8 @@ class QuantMainWindow(QMainWindow):
     def create_compare_page(self) -> QWidget:
         page = self.create_page()
         layout = page.layout()
-        rows = [[name, self.rules.benchmark, "-", "-", "-", "-", "-", "尚未实现"] for name in ("均线趋势", "动量选股", "低估值因子")]
+        result = self.service.run_demo_backtest()
+        rows = [[result.strategy_name, self.rules.benchmark, self.format_pct(result.total_return), "Mock骨架", "尚未计算", "尚未计算", "尚未计算", f"成交{len(result.trades)}笔"]]
         layout.addWidget(self.wrap_group("策略横向比较", self.create_table(["策略", "基准", "总收益", "年化", "最大回撤", "夏普", "胜率", "状态"], rows)))
         return page
 
@@ -350,9 +348,38 @@ class QuantMainWindow(QMainWindow):
             self.set_table_rows(self.fills_table, self.fill_rows())
 
     def generate_signal_preview(self) -> None:
-        self.statusBar().showMessage("已生成界面预览 | 真实策略信号尚未实现")
+        signals = self.service.strategy_service.run_daily_signals(["000001.SZ", "300750.SZ"])
+        self.statusBar().showMessage(f"已生成{len(signals)}条Mock策略信号")
         if hasattr(self, "selection_table"):
+            self.set_table_rows(self.selection_table, self.selection_rows())
             self.selection_table.selectRow(0)
+        if hasattr(self, "strategy_table"):
+            self.set_table_rows(self.strategy_table, self.strategy_status_rows())
+
+    def strategy_status_rows(self) -> list[list[str]]:
+        return [
+            [status.name, status.state.value, status.last_run, str(status.signal_count)]
+            for status in self.service.strategy_service.statuses()
+        ]
+
+    def selection_rows(self) -> list[list[str]]:
+        signals = self.service.strategy_service.latest_signals
+        if not signals:
+            return [["尚未实现", "-", "-", "-", "点击策略中心生成Mock信号", "-", "-", "-"]]
+        name_map = {quote.symbol: quote.name for quote in self.service.get_watchlist_quotes()}
+        return [
+            [
+                signal.strategy_name,
+                signal.symbol,
+                name_map.get(signal.symbol, "Mock股票"),
+                str(signal.strength),
+                signal.reason,
+                signal.signal_time.strftime("%Y-%m-%d %H:%M:%S"),
+                self.format_pct(signal.suggested_position_pct),
+                self.format_pct(signal.suggested_position_pct),
+            ]
+            for signal in signals
+        ]
 
     def quote_headers(self) -> list[str]:
         return ["代码", "名称", "最新价", "涨跌额", "涨跌幅", "今开", "最高", "最低", "昨收", "成交量", "成交额", "换手率", "行情时间", "数据源"]
@@ -539,4 +566,9 @@ class QuantMainWindow(QMainWindow):
     @staticmethod
     def format_pct(value: Decimal) -> str:
         return f"{value * Decimal('100'):.2f}%"
+
+
+
+
+
 

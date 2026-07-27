@@ -1,15 +1,18 @@
 ﻿from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
+from app.backtest import BacktestResult, DailyBacktestEngine
 from app.config import APP_TIME_ZONE
 from app.data.providers import Instrument, MarketDataError, MockMarketDataProvider, Quote
 from app.execution import SimulatedMatcher, identify_security
 from app.models import Fill, Order, OrderSide, OrderStatus
 from app.portfolio import AccountError, SimulatedAccount
 from app.risk import RiskManager
+from app.services.strategy_service import StrategyService
+from app.strategies import MovingAverageTrendStrategy
 
 
 @dataclass(frozen=True)
@@ -21,13 +24,14 @@ class ManualOrderResult:
 
 
 class TradingAppService:
-    """桌面端使用的应用服务，组合Mock行情、账户、风控和撮合内核。"""
+    """桌面端使用的应用服务，组合Mock行情、账户、风控、撮合、策略和回测。"""
 
     def __init__(self) -> None:
         self.market_data = MockMarketDataProvider()
         self.account = SimulatedAccount()
         self.risk = RiskManager()
         self.matcher = SimulatedMatcher()
+        self.strategy_service = StrategyService(self.market_data)
         self.watchlist = ["600519.SH", "000001.SZ", "300750.SZ", "688001.SH"]
 
     def get_dashboard_metrics(self) -> dict[str, str]:
@@ -109,6 +113,11 @@ class TradingAppService:
                 rejected = self.account.update_order_status(order, OrderStatus.REJECTED, str(exc))
                 return ManualOrderResult(False, rejected, None, str(exc))
             return ManualOrderResult(False, None, None, str(exc))
+
+    def run_demo_backtest(self) -> BacktestResult:
+        engine = DailyBacktestEngine(self.market_data)
+        strategy = MovingAverageTrendStrategy({"short_window": 3, "long_window": 5})
+        return engine.run(strategy, "000001.SZ", date(2026, 4, 1), date(2026, 7, 27))
 
     def _find_instrument(self, symbol: str) -> Instrument:
         for instrument in self.market_data.get_stock_list():
