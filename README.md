@@ -8,19 +8,18 @@
 
 - 已完成 PySide6 桌面端启动骨架。
 - 已建立 `app/` 分层结构、配置模块、日志模块和 10 个核心页面骨架。
-- 已实现可重复测试的 Mock 行情数据源；尚未接入真实行情数据源。
-- 已实现 SQLite 初始化、Mock行情、数据质量检查、A股交易规则、交易成本、模拟账户、风控检查、撮合可成交性内核、基础策略引擎和日线回测骨架；已接入总览、实时行情、市场数据、模拟交易、策略预览和选股结果页面。
+- 已实现 Mock 行情和真实 `AkSharePublicMarketDataProvider`；真实最新价、五档盘口、全市场股票列表、日线和交易日历已实测。
+- 已实现 SQLite 账户持久化与重启恢复、数据质量检查、A股交易规则、交易成本、风控、撮合、基础策略引擎和日线回测骨架；10 个页面已接入服务层。
 - 未实现功能会在界面中标注“尚未实现”。
 
 ## 技术栈
 
 - Python 3.11
 - PySide6
-- pandas、numpy、SQLAlchemy：后续数据与回测阶段使用
-- SQLite：后续本地持久化阶段使用
-- unittest/pytest：当前可用标准库测试，后续补 pytest
-- ruff：安装后用于静态检查
-- PyInstaller：Windows 打包配置
+- pandas、numpy、SQLAlchemy、AkShare、requests、truststore
+- SQLite：账户、持仓、订单、成交和运行数据持久化
+- unittest、pytest、ruff
+- PyInstaller：Windows 已实际打包验证
 
 ## 目录结构
 
@@ -53,10 +52,9 @@ main.py              根启动入口
 
 ## 测试
 
-当前虚拟环境尚未安装 pytest，阶段1使用标准库测试：
-
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m ruff check .
 ```
 
 或：
@@ -83,7 +81,14 @@ main.py              根启动入口
 
 ## 数据源说明
 
-当前已完成统一 `MarketDataProvider` 抽象接口和 Mock 行情数据源。Mock 支持股票列表、最新行情、五档盘口、分时、日线、交易日历、财务指标示例和健康检查；真实数据源尚未接入。任何未被实际验证的数据字段都不会在界面中伪造成可用。
+当前已完成统一 `MarketDataProvider`、Mock 源和真实公开研究数据源。真实源使用 AkShare/交易所主表、腾讯按股票批量实时行情、AkShare 日线和交易日历；默认仍使用 Mock，避免离线启动依赖网络。
+
+```powershell
+$env:QUANT_APP_DATA_PROVIDER = "public"
+.\.venv\Scripts\python.exe main.py
+```
+
+真实行情在 Qt 线程池中刷新，自选股默认每 3 秒一次，全市场主表使用长缓存。委比、委差、真实分时线和可靠历史财务披露时点当前不支持，界面不会伪造。详细字段和许可边界见 `docs/DATA_SOURCES.md`。
 
 五档盘口中的买量/卖量表示委托量，不等同于实际成交量。内盘/外盘属于主动卖出/主动买入成交口径，必须由数据源明确支持后才展示。
 
@@ -109,7 +114,7 @@ main.py              根启动入口
 .\scripts\build_windows.ps1
 ```
 
-当前已提供 `A股量化模拟交易系统.spec` 和打包脚本。只有在 PyInstaller 安装并实际运行成功后，才可声称生成了可用 exe。
+已在 Windows 11 / PyInstaller 6.21.0 实际生成并启动检查 `dist/A股量化模拟交易系统/A股量化模拟交易系统.exe`。打包应用的数据库和日志写入 `%LOCALAPPDATA%\QuantApp`，不写入程序目录。
 
 
 

@@ -5,7 +5,15 @@ from pathlib import Path
 
 from app.config.settings import RuntimePaths
 
-REQUIRED_DEPENDENCIES = ("PySide6", "pandas", "numpy", "sqlalchemy")
+REQUIRED_DEPENDENCIES = (
+    "PySide6",
+    "pandas",
+    "numpy",
+    "sqlalchemy",
+    "akshare",
+    "requests",
+    "truststore",
+)
 DEV_DEPENDENCIES = ("pytest", "ruff", "PyInstaller")
 
 

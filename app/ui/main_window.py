@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -32,6 +32,7 @@ from app.data.providers import Instrument, Quote
 from app.models import OrderSide
 from app.services.startup import dependency_status
 from app.services.trading_app_service import ManualOrderResult, TradingAppService
+from app.ui.background_task import BackgroundTask
 
 
 class QuantMainWindow(QMainWindow):
@@ -45,6 +46,11 @@ class QuantMainWindow(QMainWindow):
         self.refresh = RefreshSettings()
         self.service = service or TradingAppService()
         self.dependencies = dependency_status()
+        self.market_thread_pool = QThreadPool(self)
+        self._quote_refresh_running = False
+        self._instrument_refresh_running = False
+        self.metric_value_labels: dict[str, QLabel] = {}
+        self.metric_detail_labels: dict[str, QLabel] = {}
 
         self.setWindowTitle(APP_NAME)
         self.resize(1360, 820)
@@ -64,6 +70,13 @@ class QuantMainWindow(QMainWindow):
         self.setCentralWidget(self.tabs)
 
         self.configure_status_bar()
+        self.market_refresh_timer = QTimer(self)
+        self.market_refresh_timer.setInterval(self.refresh.watchlist_seconds * 1000)
+        self.market_refresh_timer.timeout.connect(self.refresh_quote_table)
+        if self.service.background_market_data:
+            self.market_refresh_timer.start()
+            QTimer.singleShot(0, self.refresh_quote_table)
+            QTimer.singleShot(0, self.refresh_instruments_async)
 
     def configure_status_bar(self) -> None:
         status_bar = QStatusBar()
@@ -84,7 +97,7 @@ class QuantMainWindow(QMainWindow):
         cards = [
             ("市场状态", metrics["market_status"], "基于Mock交易日历"),
             ("数据源连接", metrics["data_source"], metrics["data_status"]),
-            ("行情延迟", "1秒", "Mock固定延迟"),
+            ("行情延迟", metrics["quote_delay"], "按行情时间戳计算"),
             ("账户总资产", metrics["account_total"], "本地模拟账户"),
             ("可用现金", metrics["cash"], "账户实时状态"),
             ("持仓市值", metrics["market_value"], "按Mock最新价估值"),
@@ -126,7 +139,9 @@ class QuantMainWindow(QMainWindow):
         self.quote_table = self.create_table(self.quote_headers(), self.quote_rows())
         layout.addWidget(self.wrap_group("自选股行情", self.quote_table))
         layout.addWidget(
-            self.create_notice("五档盘口委托量不会被称为实际成交量。真实行情源尚未接入。")
+            self.create_notice(
+                "五档买卖量是未成交委托量，不是主动买卖成交量；委比、委差缺失时显示数据源不支持。"
+            )
         )
         return page
 
@@ -138,7 +153,7 @@ class QuantMainWindow(QMainWindow):
                 [
                     ("股票池", "沪深A股，第一版默认不含北交所"),
                     ("排除规则", f"ST / 退市整理 / 上市不足{self.rules.min_listing_days}日"),
-                    ("数据源", "Mock行情已接入页面"),
+                    ("数据源", self.service.market_data.name),
                     ("数据质量", "字段校验已接入服务层"),
                 ]
             )
@@ -394,8 +409,74 @@ class QuantMainWindow(QMainWindow):
         return result
 
     def refresh_quote_table(self) -> None:
+        if not self.service.background_market_data:
+            if hasattr(self, "quote_table"):
+                self.set_table_rows(self.quote_table, self.quote_rows())
+            return
+        if self._quote_refresh_running:
+            return
+        self._quote_refresh_running = True
+        self.statusBar().showMessage("正在后台刷新真实自选股行情...")
+        task = BackgroundTask(self.service.refresh_watchlist_market_data)
+        task.signals.result.connect(self._on_quotes_refreshed)
+        task.signals.error.connect(self._on_market_refresh_error)
+        task.signals.finished.connect(self._quote_refresh_finished)
+        self.market_thread_pool.start(task)
+
+    def refresh_instruments_async(self) -> None:
+        if not self.service.background_market_data or self._instrument_refresh_running:
+            return
+        self._instrument_refresh_running = True
+        task = BackgroundTask(self.service.refresh_instruments)
+        task.signals.result.connect(self._on_instruments_refreshed)
+        task.signals.error.connect(self._on_market_refresh_error)
+        task.signals.finished.connect(self._instrument_refresh_finished)
+        self.market_thread_pool.start(task)
+
+    def _on_quotes_refreshed(self, quotes: object) -> None:
         if hasattr(self, "quote_table"):
             self.set_table_rows(self.quote_table, self.quote_rows())
+        self._update_dashboard_metrics()
+        count = len(quotes) if isinstance(quotes, list) else 0
+        self.statusBar().showMessage(f"真实行情后台刷新完成：{count}只")
+
+    def _on_instruments_refreshed(self, instruments: object) -> None:
+        if hasattr(self, "instrument_table"):
+            self.set_table_rows(self.instrument_table, self.instrument_rows())
+        count = len(instruments) if isinstance(instruments, list) else 0
+        self.statusBar().showMessage(f"沪深A股主表后台加载完成：{count}只")
+
+    def _on_market_refresh_error(self, message: str) -> None:
+        self.service.record_market_error(message)
+        self._update_dashboard_metrics()
+        self.statusBar().showMessage(f"真实行情刷新失败：{message}")
+
+    def _update_dashboard_metrics(self) -> None:
+        metrics = self.service.get_dashboard_metrics()
+        values = {
+            "市场状态": metrics["market_status"],
+            "数据源连接": metrics["data_source"],
+            "行情延迟": metrics["quote_delay"],
+            "账户总资产": metrics["account_total"],
+            "可用现金": metrics["cash"],
+            "持仓市值": metrics["market_value"],
+            "账户存储": metrics["persistence_status"],
+            "风控状态": metrics["risk_status"],
+            "运行策略": metrics["running_strategy"],
+        }
+        for title, value in values.items():
+            label = self.metric_value_labels.get(title)
+            if label is not None:
+                label.setText(value)
+        data_status_label = self.metric_detail_labels.get("数据源连接")
+        if data_status_label is not None:
+            data_status_label.setText(metrics["data_status"])
+
+    def _quote_refresh_finished(self) -> None:
+        self._quote_refresh_running = False
+
+    def _instrument_refresh_finished(self) -> None:
+        self._instrument_refresh_running = False
 
     def refresh_trading_tables(self) -> None:
         if hasattr(self, "positions_table"):
@@ -458,7 +539,27 @@ class QuantMainWindow(QMainWindow):
         ]
 
     def quote_rows(self) -> list[list[str]]:
-        return [self.quote_row(quote) for quote in self.service.get_watchlist_quotes()]
+        quotes = self.service.get_watchlist_quotes()
+        if not quotes:
+            return [
+                [
+                    "-",
+                    "等待后台刷新",
+                    "-",
+                    "-",
+                    "-",
+                    "-",
+                    "-",
+                    "-",
+                    "-",
+                    "0",
+                    "¥0.00",
+                    "数据源不支持",
+                    "-",
+                    self.service.market_data.name,
+                ]
+            ]
+        return [self.quote_row(quote) for quote in quotes]
 
     def quote_row(self, quote: Quote) -> list[str]:
         return [
@@ -480,7 +581,10 @@ class QuantMainWindow(QMainWindow):
 
     def instrument_rows(self) -> list[list[str]]:
         rows: list[list[str]] = []
-        for instrument in self.service.get_instruments():
+        instruments = self.service.get_instruments()
+        if not instruments:
+            return [["-", "等待后台加载", "-", "-", "数据源不支持", "-", "-", "-"]]
+        for instrument in instruments:
             rows.append(
                 [
                     instrument.symbol,
@@ -505,7 +609,9 @@ class QuantMainWindow(QMainWindow):
             return "排除退市整理"
         if instrument.is_delisted:
             return "排除已退市"
-        return "Mock样例"
+        if not instrument.eligible:
+            return f"排除上市不足{TradingRules().min_listing_days}日"
+        return "纳入股票池"
 
     def position_headers(self) -> list[str]:
         return ["代码", "名称", "数量", "今日可卖", "成本价", "最新价", "市值", "浮动盈亏"]
@@ -625,6 +731,10 @@ class QuantMainWindow(QMainWindow):
             label.setObjectName(name)
             label.setWordWrap(True)
             layout.addWidget(label)
+            if name == "metricValue":
+                self.metric_value_labels[title] = label
+            elif name == "metricDetail":
+                self.metric_detail_labels[title] = label
         return card
 
     def create_table(self, headers: list[str], rows: list[list[str]]) -> QTableWidget:

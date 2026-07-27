@@ -11,6 +11,9 @@ class StartupTests(unittest.TestCase):
         status = dependency_status()
 
         self.assertTrue(status["PySide6"])
+        self.assertTrue(status["akshare"])
+        self.assertTrue(status["requests"])
+        self.assertTrue(status["truststore"])
         self.assertIn("pytest", status)
         self.assertIn("ruff", status)
 

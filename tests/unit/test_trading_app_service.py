@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from app.config import APP_TIME_ZONE
+from app.data.providers import MockMarketDataProvider
 from app.models import OrderSide, OrderStatus
 from app.services import TradingAppService
 
@@ -55,6 +56,23 @@ class TradingAppServiceTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn("100股整数倍", result.message)
+
+    def test_background_provider_reads_snapshots_without_network_on_getters(self) -> None:
+        service = TradingAppService(
+            market_data=MockMarketDataProvider(),
+            persist_account=False,
+            background_market_data=True,
+        )
+
+        self.assertEqual(service.get_watchlist_quotes(), [])
+        self.assertEqual(service.get_instruments(), [])
+
+        service.refresh_watchlist_market_data()
+        service.refresh_instruments()
+
+        self.assertEqual(len(service.get_watchlist_quotes()), 4)
+        self.assertGreater(len(service.get_instruments()), 4)
+        self.assertIsNotNone(service.provider_health())
 
 
 if __name__ == "__main__":

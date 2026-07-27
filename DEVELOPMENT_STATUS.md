@@ -113,7 +113,7 @@
 
 ## 当前阶段
 
-阶段 8 已完成并提交前待记录；下一阶段为阶段 9 真实免费行情与后台刷新。
+阶段 9 已完成并提交前待记录；下一阶段为阶段 10 本轮完整集成验收。
 
 ## 已完成内容
 
@@ -186,49 +186,73 @@
 - 测试可显式禁用持久化或注入仓储，避免污染用户运行数据库。
 - frozen Windows exe 的数据库、日志和配置路径改为 `%LOCALAPPDATA%/QuantApp`，不写入程序安装目录。
 
+### 阶段 9：真实免费行情与后台刷新
+
+- 新增 `AkSharePublicMarketDataProvider`，统一接入交易所股票主表、AkShare 历史接口和腾讯公开网页实时行情。
+- 2026-07-27 实测上交所主板 1698 只、科创板 612 只、深交所 A 股 2892 只，合计 5202 只，不含北交所。
+- 真实最新价、涨跌、OHLC、成交量、成交额、换手率、行情时间、买卖五档、内盘和外盘已实测成功。
+- 腾讯成交量和盘口量按“手”转换为“股”；委比、委差和精确到股的成交量标记为不支持，不伪造。
+- 日线以 AkShare/东方财富为主源，企业代理偶发断连时使用低频 AkShare/新浪备用；交易日历已实测。
+- 新增 `RateLimitedHttpClient`：证书校验、系统信任库、超时、有限重试、指数退避、限流和空响应检查。
+- 自选股、逐股票原始行情缓存 3 秒；股票主表、日线、交易日历缓存 6 小时。
+- `TradingAppService` 增加线程安全行情快照和 `QUANT_APP_DATA_PROVIDER=public` 真实源选择。
+- Qt 使用 `QThreadPool/QRunnable` 后台刷新自选股和全市场主表；测试验证网络调用线程不是 Qt 主线程。
+- 总览连接状态、行情延迟、实时行情表和市场数据表会随后台结果更新。
+- AkShare 软件为 MIT License，但其数据说明仅定位学术研究并提示商业风险；公开网页行情无服务等级承诺，文档已明确。
+
 ## 修改的文件
 
-- `app/database/account_repository.py`
-- `app/database/schema.py`
-- `app/database/connection.py`
-- `app/database/__init__.py`
+- `app/data/providers/akshare_public.py`
+- `app/data/providers/http_client.py`
+- `app/data/providers/__init__.py`
+- `app/data/providers/base.py`
+- `app/data/cache/memory_cache.py`
 - `app/services/trading_app_service.py`
+- `app/services/startup.py`
 - `app/ui/main_window.py`
-- `app/config/settings.py`
-- `tests/unit/test_account_repository.py`
-- `tests/unit/test_database.py`
-- `tests/unit/test_settings.py`
+- `app/ui/background_task.py`
+- `requirements.txt`
+- `pyproject.toml`
+- `.env.example`
+- `tests/unit/test_akshare_public_provider.py`
+- `tests/unit/test_http_client.py`
 - `tests/unit/test_trading_app_service.py`
-- `tests/integration/test_ui_*.py`
+- `tests/integration/test_real_market_data.py`
+- `tests/integration/test_ui_background_refresh.py`
+- `README.md`
+- `docs/DATA_SOURCES.md`
+- `docs/DATA_QUALITY.md`
 - `DEVELOPMENT_STATUS.md`
 
 ## 测试结果
 
-阶段 8 已执行：
+阶段 9 已执行：
 
-- `.\.venv\Scripts\python.exe -m pytest`：通过，65 个测试通过。
+- `.\.venv\Scripts\python.exe -m pytest`：通过，74 个测试通过，2 个真实网络测试默认跳过。
 - `.\.venv\Scripts\python.exe -m ruff check .`：通过，`All checks passed!`。
 - `.\.venv\Scripts\python.exe -m compileall -q main.py app tests`：通过。
-- 数据库、仓储、服务和 UI 定向测试：通过，12 个测试通过。
-- 源码启动与数据库恢复检查：通过，输出 `A股量化模拟交易系统 10 正常`。
+- `.\.venv\Scripts\python.exe -m unittest discover -s tests`：通过，76 个测试运行，2 个跳过。
+- 真实行情、快照服务、后台线程和 UI 定向测试：通过，15 个测试通过。
+- `RUN_REAL_MARKET_DATA_TESTS=1` 真实网络测试：通过，2 个测试在 32.45 秒内完成。
+- public 模式 offscreen UI：窗口构造 0.1 秒，真实 `600519.SH` 报价后台加载成功；首次验证发现全市场列表 8 秒超时不足，已为低频主表单独调整到 30 秒并由真实套件复验。
 
 ## 当前失败项
 
 - 当前虚拟环境是 Python 3.13.2；项目仍以 Python 3.11 为最低版本和 ruff 目标，但尚未在 Python 3.11 环境复验。
-- 尚未接入真实免费行情数据源，真实最新价和真实五档盘口尚未验证。
-- UI 目前同步读取 Mock 数据，尚未实现后台 QThread/线程池刷新。
 - 账户仓储当前基于标准库 `sqlite3` 的显式事务，尚未迁移到 SQLAlchemy ORM；不影响当前 SQLite 持久化能力。
 - 回测仍为基础骨架，不含完整卖出、组合再平衡、复权、分红、真实沪深300和财务披露时点控制。
+- 真实分时线和可靠历史财务披露时点尚未接入。
+- 腾讯公开网页行情不是正式授权行情 API；字段、访问策略和商业许可可能变化，仅用于本地学习研究。
+- 真实最新价按行情时间戳计算延迟；休市后会自然超过 30 秒撮合阈值，因此只允许查看，不允许使用旧价成交。
 
 ## 下一步准确任务
 
-1. 调研并实测一个无需账号、Token、验证码或绕过访问限制的合法免费公开行情接口。
-2. 实现真实 `MarketDataProvider`，覆盖股票列表、最新行情、五档盘口、日线、交易日历和健康检查的可用子集。
-3. 为 HTTP 层加入超时、有限重试、指数退避、限流、TTL 缓存、字段校验和明确异常降级。
-4. 增加不依赖网络的固定响应测试，以及由环境变量控制的可选真实接口测试。
-5. 将真实源作为主源、Mock 作为演示/测试源或明确降级源接入服务，并显示来源、时间、延迟和不支持字段。
-6. 使用 QThread/线程池实现自选股后台刷新，避免 Qt 主线程阻塞。
+1. 运行完整 pytest、unittest、ruff、compileall 和 Mock/public 源码启动检查。
+2. 使用更新后的依赖重新执行 `.\scripts\build_windows.ps1`，检查 AkShare、requests、truststore 和 Qt 是否完整打包。
+3. 启动新 exe 做存活检查，并确认 frozen 模式使用 `%LOCALAPPDATA%/QuantApp`。
+4. 复核 README、数据源文档、架构文档和用户指南中的能力边界。
+5. 更新本文件为阶段 10 完成状态并创建最终稳定提交。
 
 ## 下一条恢复命令或任务
 
-从项目根目录执行恢复检查后，直接开始阶段 9：验证公开免费行情接口，新增真实行情适配器及离线固定响应测试，再做可选网络实测和 QThread 刷新接线。
+从项目根目录执行恢复检查后，直接开始阶段 10：运行全套验收、重新打包包含真实行情依赖的 Windows exe、启动检查并更新最终状态。

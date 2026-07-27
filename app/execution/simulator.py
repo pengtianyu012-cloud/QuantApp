@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import ROUND_FLOOR, Decimal
 
 from app.config import TradingCostSettings, TradingRules
-from app.data.providers import Instrument, Quote
+from app.data.providers.base import Instrument, Quote
 from app.execution.costs import execution_price_with_slippage
 from app.execution.trading_rules import calculate_price_limits, is_at_limit_down, is_at_limit_up
 from app.models import Order, OrderSide, OrderStatus

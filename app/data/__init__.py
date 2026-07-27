@@ -1,4 +1,5 @@
 from app.data.providers import (
+    AkSharePublicMarketDataProvider,
     FallbackMarketDataProvider,
     MarketDataError,
     MarketDataProvider,
@@ -6,6 +7,7 @@ from app.data.providers import (
 )
 
 __all__ = [
+    "AkSharePublicMarketDataProvider",
     "FallbackMarketDataProvider",
     "MarketDataError",
     "MarketDataProvider",

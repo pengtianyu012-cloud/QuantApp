@@ -1,32 +1,62 @@
-﻿# 数据源说明
+# 数据源说明
 
-当前已实现：
+## 已实现数据源
 
-- `MarketDataProvider` 抽象接口
-- `MockMarketDataProvider` 无网络行情源
-- `FallbackMarketDataProvider` 主备降级包装器
-- `TtlMemoryCache` 轻量 TTL 缓存
-- 行情字段校验：最新价、昨收、成交量、成交额、时区、延迟、盘口价格和委托量
-- 数据质量报告服务：股票列表、最新行情和五档盘口基础检查
+- `MockMarketDataProvider`：完全离线、固定数据，用于单元测试和演示。
+- `AkSharePublicMarketDataProvider`：真实研究数据源，组合交易所主表、AkShare 历史接口和腾讯公开网页行情。
+- `FallbackMarketDataProvider`：通用主备路由。真实模式不会自动退回 Mock 成交，避免把模拟价格混入真实行情。
 
-Mock 数据源支持：
+统一接口为 `MarketDataProvider`。UI、策略和撮合不直接依赖 AkShare、腾讯或交易所字段。
 
-- `get_stock_list()`
-- `get_latest_quotes(symbols)`
-- `get_order_book(symbol)`，包含买一到买五、卖一到卖五及委托量
-- `get_intraday_bars(symbol, interval)`
-- `get_daily_bars(symbol, start_date, end_date)`
-- `get_trading_calendar(start_date, end_date)`
-- `get_financial_indicators(symbols, report_date)`，仅为示例数据并带披露时点警告
-- `health_check()`
+## 真实接口实测
 
-真实数据源尚未接入。后续实现顺序：
+实测日期：2026-07-27。环境：Windows 11、Python 3.13.2、AkShare 1.18.79。
 
-1. 本地 CSV/Parquet 数据源：用于可重复回测。
-2. 免费行情适配器：接入前必须检查官方文档和实际可用性。
-3. 付费数据源扩展：仅提供配置入口，不提交密钥。
+| 能力 | 来源 | 实测结果 | 字段与单位 |
+| --- | --- | --- | --- |
+| 沪市主板列表 | AkShare / 上交所 | 1698 只 | 代码、名称、上市日期 |
+| 科创板列表 | AkShare / 上交所 | 612 只 | 代码、名称、上市日期 |
+| 深市 A 股列表 | AkShare / 深交所 | 2892 只 | 代码、名称、上市日期、行业 |
+| 最新行情 | 腾讯公开网页行情 | 成功 | 最新价、昨收、今开、最高、最低、涨跌额、涨跌幅、成交量、成交额、换手率、时间戳 |
+| 买卖五档 | 腾讯公开网页行情 | 成功 | 买一至买五、卖一至卖五及各档未成交委托量 |
+| 内盘/外盘 | 腾讯公开网页行情 | 成功 | 内盘按主动卖出成交口径，外盘按主动买入成交口径 |
+| 委比/委差 | 腾讯公开网页行情 | 不支持 | 返回 `None`，并写入 `unsupported_fields`，不伪造 |
+| 日线 | AkShare / 东方财富 | 成功但当前企业代理偶发断连 | 不复权 OHLC、成交量、成交额；失败时低频使用新浪备用 |
+| 交易日历 | AkShare / 新浪 | 成功 | 指定日期区间逐日标记开市/休市 |
+| 分时线 | - | 尚未启用 | 当前网络未完成稳定性验证 |
+| 历史财务披露时点 | - | 尚未接入 | PE、PB、ROE 返回不支持警告，不宣称无未来函数 |
 
-如果字段不存在，界面必须显示“数据源不支持”，不得伪造数值。
+腾讯字段中的成交量和盘口量单位为“手”，适配器统一乘以 100 转成“股”。腾讯成交量精度按手提供，因此 `exact_share_volume` 标记为不支持；成交额使用组合字段中的元值。新浪日线成交量原始单位已经是股，不再重复缩放。
 
-五档盘口中的买量/卖量表示委托量，不等同于实际成交量。内盘/外盘属于主动卖出/主动买入成交口径，必须由数据源明确支持后才展示。
+## 可靠性措施
 
+- HTTPS 始终校验证书；企业网络使用 `truststore` 读取 Windows 系统信任库，不使用 `verify=False`。
+- 腾讯 HTTP 请求有 8 秒默认超时、有限重试、指数退避、请求频率限制和空响应检查。
+- 自选股批量请求并按股票缓存 3 秒；股票主表、日线和交易日历缓存 6 小时。
+- AkShare 调用由守护工作线程施加外层超时，并由 Qt 线程池执行，Qt 主线程不发起阻塞网络请求。
+- HTML、空数据、字段数量变化、数值或时间格式变化都会抛出 `MarketDataError`，UI 显示异常状态。
+- 真实模式请求失败时保留最后已验证快照并停止使用新数据，不拿 Mock 行情冒充真实行情。
+
+## 启用方式
+
+默认使用 Mock。PowerShell 中启用真实研究数据源：
+
+```powershell
+$env:QUANT_APP_DATA_PROVIDER = "public"
+.\.venv\Scripts\python.exe main.py
+```
+
+运行可选真实网络测试：
+
+```powershell
+$env:RUN_REAL_MARKET_DATA_TESTS = "1"
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_real_market_data.py -v
+```
+
+普通测试不依赖网络，真实测试由环境变量显式开启。
+
+## 许可与稳定性边界
+
+AkShare 代码采用 MIT License，但其项目说明明确指出采集数据主要用于学术研究，并提示个人、机构和团体注意商业风险。腾讯行情是公开网页数据，不是带服务等级承诺的正式开发者行情 API。当前适配仅用于本软件的本地量化学习和模拟研究；商业使用前必须自行确认各上游网站最新条款并考虑采购正式授权行情。
+
+公开网页字段、域名和访问策略可能变化。适配器有校验和降级，但不承诺实时性、完整性或持续可用性。

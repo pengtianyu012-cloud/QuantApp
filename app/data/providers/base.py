@@ -6,6 +6,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from app.config import APP_TIME_ZONE, TradingRules
+
 
 class MarketDataError(RuntimeError):
     """行情数据源异常，调用方应降级而不是崩溃。"""
@@ -36,7 +38,13 @@ class Instrument:
 
     @property
     def eligible(self) -> bool:
-        return not (self.is_st or self.is_delisting or self.is_delisted)
+        listing_days = (datetime.now(APP_TIME_ZONE).date() - self.listed_date).days
+        return not (
+            self.is_st
+            or self.is_delisting
+            or self.is_delisted
+            or listing_days < TradingRules().min_listing_days
+        )
 
 
 @dataclass(frozen=True)

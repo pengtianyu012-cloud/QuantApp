@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+import os
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from threading import RLock
 
 from app.backtest import BacktestResult, DailyBacktestEngine
 from app.config import APP_TIME_ZONE
 from app.data.providers import (
+    AkSharePublicMarketDataProvider,
     Instrument,
     MarketDataError,
     MarketDataProvider,
     MockMarketDataProvider,
+    OrderBook,
+    ProviderHealth,
     Quote,
 )
 from app.database import AccountRepository, AccountRepositoryError
@@ -41,8 +46,20 @@ class TradingAppService:
         account_repository: AccountRepository | None = None,
         db_path: Path | None = None,
         persist_account: bool = True,
+        background_market_data: bool | None = None,
     ) -> None:
-        self.market_data = market_data or MockMarketDataProvider()
+        self.market_data = market_data or build_default_market_data_provider()
+        self.background_market_data = (
+            background_market_data
+            if background_market_data is not None
+            else not isinstance(self.market_data, MockMarketDataProvider)
+        )
+        self._market_lock = RLock()
+        self._quote_snapshot: list[Quote] = []
+        self._instrument_snapshot: list[Instrument] = []
+        self._order_book_snapshots: dict[str, OrderBook] = {}
+        self._provider_health: ProviderHealth | None = None
+        self.last_market_error = ""
         self.persistence_required = persist_account
         self.persistence_error = ""
         self.account_repository = account_repository
@@ -65,17 +82,24 @@ class TradingAppService:
                 self.account_repository = None
         self.risk = RiskManager()
         self.matcher = SimulatedMatcher()
-        self.strategy_service = StrategyService(self.market_data)
+        strategy_provider = (
+            MockMarketDataProvider() if self.background_market_data else self.market_data
+        )
+        self.strategy_service = StrategyService(strategy_provider)
         self.watchlist = ["600519.SH", "000001.SZ", "300750.SZ", "688001.SH"]
 
     def get_dashboard_metrics(self) -> dict[str, str]:
         quotes = self.get_watchlist_quotes()
         latest_prices = {quote.symbol: quote.last_price for quote in quotes}
-        health = self.market_data.health_check()
+        health = self.provider_health()
+        quote_delay = max((quote.delay_seconds for quote in quotes), default=None)
         return {
-            "market_status": "交易日Mock",
-            "data_source": health.provider,
-            "data_status": "正常" if health.ok else "异常",
+            "market_status": "真实行情研究模式" if self.background_market_data else "交易日Mock",
+            "data_source": self.market_data.name,
+            "data_status": (
+                "等待后台连接" if health is None else ("正常" if health.ok else "异常")
+            ),
+            "quote_delay": f"{quote_delay}秒" if quote_delay is not None else "-",
             "account_total": format_money(self.account.total_assets(latest_prices)),
             "cash": format_money(self.account.cash),
             "market_value": format_money(self.account.market_value(latest_prices)),
@@ -85,10 +109,58 @@ class TradingAppService:
         }
 
     def get_watchlist_quotes(self) -> list[Quote]:
-        return self.market_data.get_latest_quotes(self.watchlist)
+        if not self.background_market_data:
+            return self.market_data.get_latest_quotes(self.watchlist)
+        with self._market_lock:
+            return list(self._quote_snapshot)
 
     def get_instruments(self) -> list[Instrument]:
-        return self.market_data.get_stock_list()
+        if not self.background_market_data:
+            return self.market_data.get_stock_list()
+        with self._market_lock:
+            return list(self._instrument_snapshot)
+
+    def refresh_watchlist_market_data(self) -> list[Quote]:
+        quotes = self.market_data.get_latest_quotes(self.watchlist)
+        order_books: dict[str, OrderBook] = {}
+        for quote in quotes:
+            try:
+                order_books[quote.symbol] = self.market_data.get_order_book(quote.symbol)
+            except MarketDataError:
+                continue
+        health = self.market_data.health_check()
+        with self._market_lock:
+            self._quote_snapshot = list(quotes)
+            self._order_book_snapshots = order_books
+            self._provider_health = health
+            self.last_market_error = "" if health.ok else health.message
+        return quotes
+
+    def refresh_instruments(self) -> list[Instrument]:
+        instruments = self.market_data.get_stock_list()
+        with self._market_lock:
+            self._instrument_snapshot = list(instruments)
+        return instruments
+
+    def record_market_error(self, message: str) -> None:
+        with self._market_lock:
+            self.last_market_error = message
+            self._provider_health = ProviderHealth(
+                provider=self.market_data.name,
+                ok=False,
+                message=message,
+                checked_at=datetime.now(APP_TIME_ZONE),
+            )
+
+    def provider_health(self) -> ProviderHealth | None:
+        if not self.background_market_data:
+            return self.market_data.health_check()
+        with self._market_lock:
+            return self._provider_health
+
+    def get_order_book_snapshot(self, symbol: str) -> OrderBook | None:
+        with self._market_lock:
+            return self._order_book_snapshots.get(symbol)
 
     def latest_price_map(self) -> dict[str, Decimal]:
         return {quote.symbol: quote.last_price for quote in self.get_watchlist_quotes()}
@@ -111,7 +183,12 @@ class TradingAppService:
         try:
             identity = identify_security(symbol_or_code)
             symbol = identity.symbol
-            quote = self.market_data.get_latest_quotes([symbol])[0]
+            quote = next(
+                (item for item in self.get_watchlist_quotes() if item.symbol == symbol),
+                None,
+            )
+            if quote is None:
+                raise MarketDataError("当前没有该股票的可用行情，请先后台刷新自选股")
             instrument = self._find_instrument(symbol)
             order_price = limit_price or quote.last_price
             if side is OrderSide.BUY:
@@ -134,7 +211,9 @@ class TradingAppService:
                 instrument,
                 now,
                 interval_volume=quote.volume,
-                has_order_book=True,
+                has_order_book=self.get_order_book_snapshot(symbol) is not None
+                if self.background_market_data
+                else True,
             )
             if execution.status in {OrderStatus.FILLED, OrderStatus.PARTIALLY_FILLED}:
                 fill = working_account.apply_fill(
@@ -176,7 +255,8 @@ class TradingAppService:
         self._commit_account(working_account)
 
     def run_demo_backtest(self) -> BacktestResult:
-        engine = DailyBacktestEngine(self.market_data)
+        provider = MockMarketDataProvider() if self.background_market_data else self.market_data
+        engine = DailyBacktestEngine(provider)
         strategy = MovingAverageTrendStrategy({"short_window": 3, "long_window": 5})
         return engine.run(strategy, "000001.SZ", date(2026, 4, 1), date(2026, 7, 27))
 
@@ -194,3 +274,10 @@ class TradingAppService:
 
 def format_money(value: Decimal) -> str:
     return f"¥{value:,.2f}"
+
+
+def build_default_market_data_provider() -> MarketDataProvider:
+    provider_name = os.environ.get("QUANT_APP_DATA_PROVIDER", "mock").strip().lower()
+    if provider_name in {"public", "akshare", "real"}:
+        return AkSharePublicMarketDataProvider()
+    return MockMarketDataProvider()
