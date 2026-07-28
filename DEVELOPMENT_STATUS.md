@@ -1,6 +1,6 @@
 ﻿# DEVELOPMENT_STATUS
 
-更新时间：2026-07-27
+更新时间：2026-07-28
 
 ## 恢复规则
 
@@ -114,6 +114,14 @@
 ## 当前阶段
 
 阶段 10 已完成，数据库持久化、真实公开研究行情和 Windows 冻结版均已通过本轮验收。
+
+## GitHub 仓库连接
+
+- `origin` 已连接到 `https://github.com/pengtianyu012-cloud/QuantApp.git`。
+- GitHub 远端原有 `main` 初始提交 `c682300`，仅包含一行 README；已通过 `ours` 合并策略纳入历史，未覆盖本地完整项目文件。
+- 本地主分支已由 `master` 重命名为 `main`，并跟踪 `origin/main`。
+- 连接合并提交：`6fb5596 chore: connect GitHub repository`。
+- 首次非强制推送已成功，本次未要求用户重新登录。
 
 ## 已完成内容
 
