@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import uuid4
 
 from app.config import TradingCostSettings, TradingRules
 from app.execution.costs import calculate_trade_cost
+from app.execution.order_state import OrderStateMachine
 from app.execution.trading_rules import is_t_plus_one_sell_allowed, is_valid_buy_quantity
 from app.models import Fill, Order, OrderSide, OrderStatus, OrderType, Position
 
@@ -46,13 +47,14 @@ class SimulatedAccount:
         submitted_at: datetime,
         order_type: OrderType = OrderType.NEXT_OPEN,
         limit_price: Decimal | None = None,
+        eligible_at: datetime | None = None,
     ) -> Order:
         if side is OrderSide.BUY and not is_valid_buy_quantity(quantity):
             raise AccountError("普通A股买入数量必须是100股整数倍")
         if quantity <= 0:
             raise AccountError("订单数量必须大于0")
 
-        order = Order(
+        created = Order(
             order_id=f"O-{uuid4().hex[:12]}",
             account_id=self.account_id,
             symbol=symbol,
@@ -61,17 +63,44 @@ class SimulatedAccount:
             quantity=quantity,
             submitted_at=submitted_at,
             limit_price=limit_price,
-            status=OrderStatus.PENDING_FILL,
+            status=OrderStatus.CREATED,
+            eligible_at=eligible_at,
+            updated_at=submitted_at,
         )
-        self.orders.append(order)
-        return order
+        self.orders.append(created)
+        target = (
+            OrderStatus.PENDING_NEXT_OPEN
+            if order_type is OrderType.NEXT_OPEN
+            else OrderStatus.ELIGIBLE
+        )
+        return self.update_order_status(created, target, occurred_at=submitted_at)
 
-    def update_order_status(self, order: Order, status: OrderStatus, reason: str = "") -> Order:
-        updated_order = replace(order, status=status, reason=reason)
+    def update_order_status(
+        self,
+        order: Order,
+        status: OrderStatus,
+        reason: str = "",
+        occurred_at: datetime | None = None,
+        fill_quantity: int = 0,
+    ) -> Order:
+        current = self.get_order(order.order_id)
+        event_time = occurred_at or current.updated_at or current.submitted_at
+        if fill_quantity:
+            updated_order = OrderStateMachine.apply_fill_progress(
+                current, fill_quantity, event_time, reason
+            )
+        else:
+            updated_order = OrderStateMachine.transition(current, status, event_time, reason)
         self.orders = [
             updated_order if item.order_id == order.order_id else item for item in self.orders
         ]
         return updated_order
+
+    def get_order(self, order_id: str) -> Order:
+        try:
+            return next(order for order in self.orders if order.order_id == order_id)
+        except StopIteration as exc:
+            raise AccountError(f"未知订单：{order_id}") from exc
 
     def apply_fill(
         self,
@@ -82,17 +111,19 @@ class SimulatedAccount:
         stock_name: str = "",
         settings: TradingCostSettings | None = None,
         degraded_model: bool = False,
+        reason: str = "",
     ) -> Fill:
+        current_order = self.get_order(order.order_id)
         if quantity <= 0:
             raise AccountError("成交数量必须大于0")
-        if quantity > order.quantity:
-            raise AccountError("成交数量不能超过订单数量")
-        costs = calculate_trade_cost(order.side, price, quantity, settings)
+        if quantity > (current_order.remaining_quantity or 0):
+            raise AccountError("成交数量不能超过订单剩余数量")
+        costs = calculate_trade_cost(current_order.side, price, quantity, settings)
         fill = Fill(
             fill_id=f"F-{uuid4().hex[:12]}",
-            order_id=order.order_id,
-            symbol=order.symbol,
-            side=order.side,
+            order_id=current_order.order_id,
+            symbol=current_order.symbol,
+            side=current_order.side,
             quantity=quantity,
             price=price,
             commission=costs.commission,
@@ -102,19 +133,30 @@ class SimulatedAccount:
             filled_at=filled_at,
             degraded_model=degraded_model,
         )
-        if order.side is OrderSide.BUY:
+        if current_order.side is OrderSide.BUY:
             cash_required = costs.notional + costs.total
             if cash_required > self.cash:
                 raise AccountError("可用现金不足")
             self.cash = quantize_money(self.cash - cash_required)
             self._increase_position(
-                order.symbol, stock_name or order.symbol, quantity, price, filled_at.date()
+                current_order.symbol,
+                stock_name or current_order.symbol,
+                quantity,
+                price,
+                filled_at.date(),
             )
         else:
-            self._decrease_position(order.symbol, quantity, price, filled_at.date())
+            self._decrease_position(current_order.symbol, quantity, price, filled_at.date())
             cash_in = costs.notional - costs.total
             self.cash = quantize_money(self.cash + cash_in)
         self.fills.append(fill)
+        self.update_order_status(
+            current_order,
+            OrderStatus.FILLED,
+            reason,
+            occurred_at=filled_at,
+            fill_quantity=quantity,
+        )
         return fill
 
     def advance_trading_day(self) -> None:

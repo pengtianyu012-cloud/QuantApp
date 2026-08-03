@@ -1,94 +1,245 @@
 import unittest
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
+from app.config import APP_TIME_ZONE
 from app.data.providers import MockMarketDataProvider
-from app.execution import SimulatedMatcher
+from app.execution import (
+    InvalidOrderTransition,
+    OrderStateMachine,
+    ProviderTradingCalendar,
+    SimulatedMatcher,
+    calculate_price_limits,
+)
 from app.models import Order, OrderSide, OrderStatus, OrderType
+from app.portfolio import SimulatedAccount
+from app.utils import FrozenClock
 
 
 class ExecutionSimulatorTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.provider = MockMarketDataProvider()
-        self.instrument = self.provider.get_stock_list()[0]
+        self.now = datetime(2030, 8, 6, 9, 30, tzinfo=APP_TIME_ZONE)
+        self.clock = FrozenClock(self.now)
+        self.provider = MockMarketDataProvider(clock=self.clock)
+        self.instrument = self.provider.get_stock_list()[1]
         self.quote = self.provider.get_latest_quotes([self.instrument.symbol])[0]
-        self.order = Order(
+        self.matcher = SimulatedMatcher(ProviderTradingCalendar(self.provider))
+
+    def order(
+        self,
+        *,
+        side: OrderSide = OrderSide.BUY,
+        order_type: OrderType = OrderType.MARKET,
+        quantity: int = 100,
+        limit_price: Decimal | None = None,
+        status: OrderStatus = OrderStatus.ELIGIBLE,
+    ) -> Order:
+        return Order(
             order_id="O-TEST",
             account_id="SIM-001",
             symbol=self.instrument.symbol,
-            side=OrderSide.BUY,
+            side=side,
+            order_type=order_type,
+            quantity=quantity,
+            submitted_at=self.now - timedelta(days=1),
+            limit_price=limit_price,
+            status=status,
+            eligible_at=self.now if order_type is OrderType.NEXT_OPEN else None,
+        )
+
+    def test_next_open_order_never_fills_on_submission_day(self) -> None:
+        order = self.order(
             order_type=OrderType.NEXT_OPEN,
-            quantity=1000,
-            submitted_at=datetime(2026, 7, 27, 15, 1),
+            status=OrderStatus.PENDING_NEXT_OPEN,
         )
-        self.matcher = SimulatedMatcher()
+        same_day = order.submitted_at.replace(hour=14)
 
-    def test_suspended_stock_is_deferred(self) -> None:
-        instrument = replace(self.instrument, is_suspended=True)
-
-        result = self.matcher.evaluate(
-            self.order, self.quote, instrument, datetime(2026, 7, 28, 9, 30)
+        pending = self.matcher.evaluate(
+            order, self.quote, self.instrument, same_day, interval_volume=10_000
         )
-
-        self.assertEqual(result.status, OrderStatus.DEFERRED)
-        self.assertIn("停牌", result.reason)
-
-    def test_stale_quote_is_deferred(self) -> None:
-        quote = replace(self.quote, delay_seconds=60)
-
-        result = self.matcher.evaluate(
-            self.order, quote, self.instrument, datetime(2026, 7, 28, 9, 30)
+        eligible = self.matcher.evaluate(
+            order, self.quote, self.instrument, self.now, interval_volume=10_000
         )
 
-        self.assertEqual(result.status, OrderStatus.DEFERRED)
-        self.assertIn("过期", result.reason)
+        self.assertEqual(pending.status, OrderStatus.PENDING_NEXT_OPEN)
+        self.assertEqual(pending.fill_quantity, 0)
+        self.assertEqual(eligible.status, OrderStatus.FILLED)
 
-    def test_limit_up_blocks_buy(self) -> None:
-        quote = replace(self.quote, last_price=Decimal("1855.48"), prev_close=Decimal("1686.80"))
-
-        result = self.matcher.evaluate(
-            self.order, quote, self.instrument, datetime(2026, 7, 28, 9, 30)
-        )
-
-        self.assertEqual(result.status, OrderStatus.DEFERRED)
-        self.assertIn("涨停", result.reason)
-
-    def test_limit_down_blocks_sell(self) -> None:
-        sell_order = replace(self.order, side=OrderSide.SELL)
-        quote = replace(self.quote, last_price=Decimal("1518.12"), prev_close=Decimal("1686.80"))
-
-        result = self.matcher.evaluate(
-            sell_order, quote, self.instrument, datetime(2026, 7, 28, 9, 30)
-        )
-
-        self.assertEqual(result.status, OrderStatus.DEFERRED)
-        self.assertIn("跌停", result.reason)
-
-    def test_volume_participation_can_partially_fill(self) -> None:
-        result = self.matcher.evaluate(
-            self.order,
+    def test_limit_buy_and_sell_conditions_are_directional(self) -> None:
+        buy_waits = self.matcher.evaluate(
+            self.order(order_type=OrderType.LIMIT, limit_price=Decimal("10.79")),
             self.quote,
             self.instrument,
-            datetime(2026, 7, 28, 9, 30),
-            interval_volume=5_000,
+            self.now,
+        )
+        buy_fills = self.matcher.evaluate(
+            self.order(order_type=OrderType.LIMIT, limit_price=Decimal("10.81")),
+            self.quote,
+            self.instrument,
+            self.now,
+        )
+        sell_waits = self.matcher.evaluate(
+            self.order(
+                side=OrderSide.SELL,
+                order_type=OrderType.LIMIT,
+                limit_price=Decimal("10.81"),
+            ),
+            self.quote,
+            self.instrument,
+            self.now,
+        )
+        sell_fills = self.matcher.evaluate(
+            self.order(
+                side=OrderSide.SELL,
+                order_type=OrderType.LIMIT,
+                limit_price=Decimal("10.79"),
+            ),
+            self.quote,
+            self.instrument,
+            self.now,
         )
 
-        self.assertEqual(result.status, OrderStatus.PARTIALLY_FILLED)
-        self.assertEqual(result.fill_quantity, 500)
-        self.assertIsNotNone(result.fill_price)
+        self.assertEqual(buy_waits.status, OrderStatus.DEFERRED)
+        self.assertEqual(buy_fills.status, OrderStatus.FILLED)
+        self.assertEqual(sell_waits.status, OrderStatus.DEFERRED)
+        self.assertEqual(sell_fills.status, OrderStatus.FILLED)
+
+    def test_current_time_change_makes_quote_stale(self) -> None:
+        fresh = self.matcher.evaluate(
+            self.order(), self.quote, self.instrument, self.now, interval_volume=10_000
+        )
+        stale = self.matcher.evaluate(
+            self.order(),
+            self.quote,
+            self.instrument,
+            self.now + timedelta(seconds=31),
+            interval_volume=10_000,
+        )
+
+        self.assertEqual(fresh.status, OrderStatus.FILLED)
+        self.assertEqual(stale.status, OrderStatus.DEFERRED)
+        self.assertIn("过期", stale.reason)
+
+    def test_partial_fill_tracks_remaining_and_can_continue(self) -> None:
+        account = SimulatedAccount()
+        order = account.submit_order(
+            self.instrument.symbol,
+            OrderSide.BUY,
+            1_000,
+            self.now,
+            order_type=OrderType.MARKET,
+        )
+
+        first = self.matcher.evaluate(
+            order, self.quote, self.instrument, self.now, interval_volume=3_000
+        )
+        account.apply_fill(
+            order,
+            first.fill_price or self.quote.last_price,
+            first.fill_quantity,
+            self.now,
+            reason=first.reason,
+        )
+        remaining = account.get_order(order.order_id)
+        second = self.matcher.evaluate(
+            remaining,
+            self.quote,
+            self.instrument,
+            self.now,
+            interval_volume=7_000,
+        )
+        account.apply_fill(
+            remaining,
+            second.fill_price or self.quote.last_price,
+            second.fill_quantity,
+            self.now,
+            reason=second.reason,
+        )
+        completed = account.get_order(order.order_id)
+
+        self.assertEqual(first.status, OrderStatus.PARTIALLY_FILLED)
+        self.assertEqual(remaining.filled_quantity, 300)
+        self.assertEqual(remaining.remaining_quantity, 700)
+        self.assertEqual(second.status, OrderStatus.FILLED)
+        self.assertEqual(completed.filled_quantity, 1_000)
+        self.assertEqual(completed.remaining_quantity, 0)
+
+    def test_suspended_and_delisted_stocks_cannot_fill(self) -> None:
+        suspended = self.matcher.evaluate(
+            self.order(),
+            self.quote,
+            replace(self.instrument, is_suspended=True),
+            self.now,
+        )
+        delisted = self.matcher.evaluate(
+            self.order(),
+            self.quote,
+            replace(self.instrument, is_delisted=True),
+            self.now,
+        )
+
+        self.assertEqual(suspended.status, OrderStatus.DEFERRED)
+        self.assertEqual(delisted.status, OrderStatus.REJECTED)
+
+    def test_limit_up_blocks_buy_and_limit_down_blocks_sell(self) -> None:
+        limits = calculate_price_limits(self.quote.prev_close, self.instrument.board)
+        limit_up_quote = replace(self.quote, last_price=limits.limit_up)
+        limit_down_quote = replace(self.quote, last_price=limits.limit_down)
+
+        buy = self.matcher.evaluate(
+            self.order(), limit_up_quote, self.instrument, self.now
+        )
+        sell = self.matcher.evaluate(
+            self.order(side=OrderSide.SELL),
+            limit_down_quote,
+            self.instrument,
+            self.now,
+        )
+
+        self.assertEqual(buy.status, OrderStatus.DEFERRED)
+        self.assertEqual(sell.status, OrderStatus.DEFERRED)
+
+    def test_non_trading_day_and_non_trading_session_defer(self) -> None:
+        before_open = self.now.replace(hour=9, minute=0)
+        saturday = self.now + timedelta(days=4)
+
+        session_result = self.matcher.evaluate(
+            self.order(), self.quote, self.instrument, before_open
+        )
+        calendar_result = self.matcher.evaluate(
+            self.order(), self.quote, self.instrument, saturday
+        )
+
+        self.assertEqual(session_result.status, OrderStatus.DEFERRED)
+        self.assertIn("连续竞价", session_result.reason)
+        self.assertEqual(calendar_result.status, OrderStatus.DEFERRED)
+        self.assertIn("交易日", calendar_result.reason)
 
     def test_missing_order_book_marks_degraded_model(self) -> None:
         result = self.matcher.evaluate(
-            self.order,
+            self.order(),
             self.quote,
             self.instrument,
-            datetime(2026, 7, 28, 9, 30),
+            self.now,
+            interval_volume=10_000,
             has_order_book=False,
         )
 
         self.assertTrue(result.degraded_model)
-        self.assertIn("降级", result.reason)
+
+    def test_terminal_order_cannot_be_reactivated(self) -> None:
+        filled = replace(
+            self.order(),
+            status=OrderStatus.FILLED,
+            filled_quantity=100,
+            remaining_quantity=0,
+        )
+
+        with self.assertRaises(InvalidOrderTransition):
+            OrderStateMachine.transition(
+                filled, OrderStatus.ELIGIBLE, self.now, "错误重启"
+            )
 
 
 if __name__ == "__main__":

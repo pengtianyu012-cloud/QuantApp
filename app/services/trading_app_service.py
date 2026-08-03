@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from pathlib import Path
 from threading import RLock
 
 from app.backtest import BacktestResult, DailyBacktestEngine
-from app.config import RuntimeMode, TradingRules, resolve_runtime_mode
+from app.config import APP_TIME_ZONE, RuntimeMode, TradingRules, resolve_runtime_mode
 from app.data.providers import (
     AkSharePublicMarketDataProvider,
     Instrument,
@@ -26,7 +26,7 @@ from app.execution import (
     TradingCalendar,
     identify_security,
 )
-from app.models import Fill, Order, OrderSide, OrderStatus
+from app.models import Fill, Order, OrderSide, OrderStatus, OrderType
 from app.portfolio import AccountError, SimulatedAccount
 from app.risk import RiskManager
 from app.services.strategy_service import StrategyService
@@ -102,7 +102,7 @@ class TradingAppService:
                 self.persistence_error = str(exc)
                 self.account_repository = None
         self.risk = RiskManager()
-        self.matcher = SimulatedMatcher()
+        self.matcher = SimulatedMatcher(self.trading_calendar)
         self.strategy_service = StrategyService(self.market_data, self.clock)
         self.watchlist = ["600519.SH", "000001.SZ", "300750.SZ", "688001.SH"]
 
@@ -194,6 +194,7 @@ class TradingAppService:
         quantity: int,
         limit_price: Decimal | None = None,
         current_time: datetime | None = None,
+        order_type: OrderType | None = None,
     ) -> ManualOrderResult:
         if self.persistence_required and self.account_repository is None:
             message = self.persistence_error or "账户数据库不可用"
@@ -227,8 +228,23 @@ class TradingAppService:
                 if not risk_result.passed:
                     return ManualOrderResult(False, None, None, risk_result.message)
 
+            selected_order_type = order_type or (
+                OrderType.LIMIT if limit_price is not None else OrderType.MARKET
+            )
+            eligible_at = None
+            if selected_order_type is OrderType.NEXT_OPEN:
+                next_open_date = self.trading_calendar.next_trading_day(now.date())
+                eligible_at = datetime.combine(
+                    next_open_date, time(9, 30), tzinfo=APP_TIME_ZONE
+                )
             order = working_account.submit_order(
-                symbol, side, quantity, now, limit_price=limit_price
+                symbol,
+                side,
+                quantity,
+                now,
+                order_type=selected_order_type,
+                limit_price=limit_price,
+                eligible_at=eligible_at,
             )
             execution = self.matcher.evaluate(
                 order,
@@ -248,10 +264,9 @@ class TradingAppService:
                     now,
                     stock_name=quote.name,
                     degraded_model=execution.degraded_model,
+                    reason=execution.reason,
                 )
-                updated_order = working_account.update_order_status(
-                    order, execution.status, execution.reason
-                )
+                updated_order = working_account.get_order(order.order_id)
                 self._commit_account(working_account)
                 return ManualOrderResult(True, updated_order, fill, execution.reason)
 
@@ -259,7 +274,8 @@ class TradingAppService:
                 order, execution.status, execution.reason
             )
             self._commit_account(working_account)
-            return ManualOrderResult(False, updated_order, None, execution.reason)
+            accepted = not updated_order.status.is_terminal
+            return ManualOrderResult(accepted, updated_order, None, execution.reason)
         except (AccountError, ValueError, IndexError, MarketDataError) as exc:
             if order is not None:
                 rejected = working_account.update_order_status(
@@ -270,6 +286,69 @@ class TradingAppService:
                 except AccountRepositoryError as persistence_exc:
                     return ManualOrderResult(False, None, None, str(persistence_exc))
                 return ManualOrderResult(False, rejected, None, str(exc))
+            return ManualOrderResult(False, None, None, str(exc))
+        except AccountRepositoryError as exc:
+            return ManualOrderResult(False, None, None, str(exc))
+
+    def process_pending_order(
+        self,
+        order_id: str,
+        current_time: datetime | None = None,
+    ) -> ManualOrderResult:
+        if self.persistence_required and self.account_repository is None:
+            message = self.persistence_error or "账户数据库不可用"
+            return ManualOrderResult(False, None, None, message)
+        now = current_time or self.clock.now()
+        working_account = deepcopy(self.account)
+        try:
+            order = working_account.get_order(order_id)
+            if order.status.is_terminal:
+                return ManualOrderResult(False, order, None, "终态订单不可再次撮合")
+            quote = next(
+                (
+                    item
+                    for item in self.get_watchlist_quotes()
+                    if item.symbol == order.symbol
+                ),
+                None,
+            )
+            if quote is None:
+                raise MarketDataError("当前没有该股票的可用行情")
+            instrument = self._find_instrument(order.symbol)
+            execution = self.matcher.evaluate(
+                order,
+                quote,
+                instrument,
+                now,
+                interval_volume=quote.volume,
+                has_order_book=self.get_order_book_snapshot(order.symbol) is not None
+                if self.background_market_data
+                else True,
+            )
+            if execution.status in {OrderStatus.FILLED, OrderStatus.PARTIALLY_FILLED}:
+                fill = working_account.apply_fill(
+                    order,
+                    execution.fill_price or quote.last_price,
+                    execution.fill_quantity,
+                    now,
+                    stock_name=quote.name,
+                    degraded_model=execution.degraded_model,
+                    reason=execution.reason,
+                )
+                updated_order = working_account.get_order(order.order_id)
+                self._commit_account(working_account)
+                return ManualOrderResult(True, updated_order, fill, execution.reason)
+            updated_order = working_account.update_order_status(
+                order, execution.status, execution.reason, occurred_at=now
+            )
+            self._commit_account(working_account)
+            return ManualOrderResult(
+                not updated_order.status.is_terminal,
+                updated_order,
+                None,
+                execution.reason,
+            )
+        except (AccountError, ValueError, IndexError, MarketDataError) as exc:
             return ManualOrderResult(False, None, None, str(exc))
         except AccountRepositoryError as exc:
             return ManualOrderResult(False, None, None, str(exc))

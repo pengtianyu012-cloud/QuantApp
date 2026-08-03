@@ -19,14 +19,28 @@ class OrderType(StrEnum):
 
 
 class OrderStatus(StrEnum):
-    PENDING_SUBMIT = "待提交"
-    PENDING_FILL = "待成交"
+    CREATED = "已创建"
+    PENDING_NEXT_OPEN = "等待下一交易日开盘"
+    ELIGIBLE = "可撮合"
     PARTIALLY_FILLED = "部分成交"
     FILLED = "已成交"
-    CANCELLED = "已撤销"
-    REJECTED = "已拒绝"
     DEFERRED = "顺延"
+    CANCELLED = "已撤销"
     EXPIRED = "已过期"
+    REJECTED = "已拒绝"
+
+    # 仅用于读取旧数据库；新订单不得进入这些状态。
+    PENDING_SUBMIT = "待提交"
+    PENDING_FILL = "待成交"
+
+    @property
+    def is_terminal(self) -> bool:
+        return self in {
+            OrderStatus.FILLED,
+            OrderStatus.CANCELLED,
+            OrderStatus.EXPIRED,
+            OrderStatus.REJECTED,
+        }
 
 
 @dataclass(frozen=True)
@@ -39,8 +53,26 @@ class Order:
     quantity: int
     submitted_at: datetime
     limit_price: Decimal | None = None
-    status: OrderStatus = OrderStatus.PENDING_FILL
+    status: OrderStatus = OrderStatus.CREATED
     reason: str = ""
+    eligible_at: datetime | None = None
+    filled_quantity: int = 0
+    remaining_quantity: int | None = None
+    updated_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        remaining = (
+            self.quantity - self.filled_quantity
+            if self.remaining_quantity is None
+            else self.remaining_quantity
+        )
+        if self.quantity <= 0:
+            raise ValueError("订单数量必须大于0")
+        if self.filled_quantity < 0 or remaining < 0:
+            raise ValueError("成交数量和剩余数量不能为负数")
+        if self.filled_quantity + remaining != self.quantity:
+            raise ValueError("订单数量必须等于已成交数量与剩余数量之和")
+        object.__setattr__(self, "remaining_quantity", remaining)
 
 
 @dataclass(frozen=True)

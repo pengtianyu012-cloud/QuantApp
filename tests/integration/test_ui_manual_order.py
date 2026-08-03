@@ -1,20 +1,24 @@
 import os
 import unittest
+from datetime import datetime
 from decimal import Decimal
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
+from app.config import APP_TIME_ZONE
 from app.models import OrderSide
 from app.services import TradingAppService
 from app.ui.main_window import QuantMainWindow
+from app.utils import FrozenClock
 
 
 class UiManualOrderTests(unittest.TestCase):
     def test_manual_buy_updates_trading_tables(self) -> None:
         app = QApplication.instance() or QApplication([])
-        window = QuantMainWindow(TradingAppService(persist_account=False))
+        clock = FrozenClock(datetime(2030, 8, 6, 9, 30, tzinfo=APP_TIME_ZONE))
+        window = QuantMainWindow(TradingAppService(persist_account=False, clock=clock))
 
         result = window.execute_manual_order(
             OrderSide.BUY,

@@ -120,7 +120,7 @@
 
 ## 当前阶段
 
-Phase 0A 已完成并等待提交；下一子阶段为 0B 订单状态机与撮合正确性。
+Phase 0B 已完成并等待提交；下一子阶段为 0C 净值回撤、成本账务与追加式持久化。
 
 ## GitHub 仓库连接
 
@@ -234,8 +234,33 @@ Phase 0A 已完成并等待提交；下一子阶段为 0B 订单状态机与撮�
 - 新增可注入 `Clock`、`SystemClock`、`FrozenClock` 和 provider 驱动的 `TradingCalendar`。
 - Mock 行情当前时间、股票上市资格判断、策略截止日和五年回测区间均由 Clock 推导。
 - 修复无历史行情时空回测结果参数缺失导致的 `TypeError`。
+- Phase 0A 提交：`27a07e2 feat: define local runtime correctness modes`。
+
+### Phase 0B：订单状态机与撮合正确性
+
+- 建立 CREATED、PENDING_NEXT_OPEN、ELIGIBLE、PARTIALLY_FILLED、FILLED、DEFERRED、CANCELLED、EXPIRED、REJECTED 状态机并拒绝非法转换。
+- 订单新增 `eligible_at`、`filled_quantity`、`remaining_quantity` 和 `updated_at`。
+- NEXT_OPEN 提交日不会成交，仅在交易日历确认的下一交易日 09:30 后进入撮合。
+- 撮合动态检查交易日、连续竞价时段、订单类型、买卖限价、停牌、退市整理、已退市、涨跌停和上市天数。
+- 行情年龄改为 `current_time - quote_time` 动态计算，不再信任 provider 的静态延迟字段。
+- 部分成交按 remaining quantity 继续撮合，后续成交可准确转为 FILLED。
+- 手工订单默认按有价格为 LIMIT、无价格为 MARKET，另支持显式 NEXT_OPEN；新增待处理订单续撮入口。
 
 ## 修改的文件
+
+### Phase 0B
+
+- `app/models/trading.py`
+- `app/execution/order_state.py`
+- `app/execution/simulator.py`
+- `app/execution/__init__.py`
+- `app/portfolio/account.py`
+- `app/services/trading_app_service.py`
+- `tests/unit/test_execution_simulator.py`
+- `tests/unit/test_trading_app_service.py`
+- `tests/unit/test_account_repository.py`
+- `tests/integration/test_ui_manual_order.py`
+- `DEVELOPMENT_STATUS.md`
 
 ### Phase 0A
 
@@ -289,6 +314,13 @@ Phase 0A 已完成并等待提交；下一子阶段为 0B 订单状态机与撮�
 
 ## 测试结果
 
+Phase 0B 已执行：
+
+- `.\.venv\Scripts\python.exe -m pytest`：通过，81 个测试通过，2 个真实网络测试默认跳过。
+- `.\.venv\Scripts\python.exe -m ruff check .`：通过，`All checks passed!`。
+- `.\.venv\Scripts\python.exe -m compileall -q main.py app tests`：通过。
+- NEXT_OPEN、双向限价、动态行情过期、部分成交续撮、交易日/时段、停牌、涨跌停、退市和终态不可复活测试：通过。
+
 Phase 0A 已执行：
 
 - `.\.venv\Scripts\python.exe -m pytest`：通过，77 个测试通过，2 个真实网络测试默认跳过。
@@ -323,7 +355,7 @@ Phase 0A 已执行：
 
 ## 当前失败项
 
-- Phase 0B 至 0D 尚未完成：订单状态机、NEXT_OPEN、部分成交续撮、动态行情时效、净值回撤与追加式审计仍待本轮实现。
+- Phase 0C 至 0D 尚未完成：订单新字段尚未迁移入数据库，净值回撤、成本账务与追加式审计仍待本轮实现。
 - 本轮数据库持久化、真实行情接入和 Windows 打包启动没有阻断失败项。
 - 当前虚拟环境是 Python 3.13.2；项目仍以 Python 3.11 为最低版本和 ruff 目标，但尚未在 Python 3.11 环境复验。
 - 账户仓储当前基于标准库 `sqlite3` 的显式事务，尚未迁移到 SQLAlchemy ORM；不影响当前 SQLite 持久化能力。
@@ -334,11 +366,11 @@ Phase 0A 已执行：
 
 ## 下一步准确任务
 
-1. 实现订单状态机及合法转换，补 `filled_quantity`、`remaining_quantity` 和 `eligible_at`。
-2. NEXT_OPEN 在提交日保持 `PENDING_NEXT_OPEN`，仅下一交易日开盘进入 `ELIGIBLE`。
-3. 撮合检查交易日、交易时段、订单类型、限价、停牌、退市、涨跌停和动态行情时效。
-4. 部分成交按 remaining quantity 继续撮合，并补对应单元测试。
+1. 建立每日 `PortfolioSnapshot`，计算净值、历史峰值、当前回撤、最大回撤和累计费用。
+2. 风控读取账户真实 current drawdown，15% 后阻止买入但允许卖出。
+3. 统一滑点/市场冲击价格调整和显式费用口径，补完整 Fill 字段与账务恒等式测试。
+4. 数据库升级并持久化订单剩余量、快照、峰值与回撤；订单事件和成交采用追加式审计写入。
 
 ## 下一条恢复命令或任务
 
-从 `feat/local-correctness-core` 执行 `git status --short --branch`、`git log -5 --oneline`、`.\.venv\Scripts\python.exe -m pytest`；确认 Phase 0A 提交存在且工作区干净后，从订单状态机模型开始 Phase 0B。
+从 `feat/local-correctness-core` 执行 `git status --short --branch`、`git log -5 --oneline`、`.\.venv\Scripts\python.exe -m pytest`；确认 Phase 0B 提交存在且工作区干净后，从 PortfolioSnapshot 与成本账务模型开始 Phase 0C。

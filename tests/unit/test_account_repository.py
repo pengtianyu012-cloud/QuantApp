@@ -9,6 +9,7 @@ from app.database import AccountRepository, AccountRepositoryError, connect_data
 from app.models import OrderSide, OrderStatus
 from app.portfolio import SimulatedAccount
 from app.services import TradingAppService
+from app.utils import FrozenClock
 
 
 class AccountRepositoryTests(unittest.TestCase):
@@ -76,13 +77,13 @@ class AccountRepositoryTests(unittest.TestCase):
         self.assertEqual(len(restored.orders), 1)
 
     def test_service_restart_restores_persisted_account(self) -> None:
-        first = TradingAppService(db_path=self.db_path)
+        clock = FrozenClock(datetime(2030, 8, 6, 9, 30, tzinfo=APP_TIME_ZONE))
+        first = TradingAppService(db_path=self.db_path, clock=clock)
         result = first.place_manual_order(
             OrderSide.BUY,
             "000001.SZ",
             100,
             Decimal("10.80"),
-            datetime(2026, 7, 27, 9, 30, tzinfo=APP_TIME_ZONE),
         )
         self.assertTrue(result.ok)
 
