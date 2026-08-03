@@ -297,7 +297,24 @@
 - TradingAppService 新增收盘策略运行和显式信号派发入口；派发完成后从 SQLite 恢复账户，保证内存与数据库一致。
 - README、架构、交易规则、用户指南和 v3 到 v4 迁移说明已同步；桌面自动定时触发、开盘批量续撮和取消/过期明确留到 Phase 1C。
 
+### Python 3.13.2 本机构建基线
+
+- 项目运行版本范围更新为 Python 3.13.2 到 3.13.x，.python-version 固定为 3.13.2。
+- Ruff 目标从 py311 更新为 py313；旧式 Generic/TypeVar 缓存类已迁移到 Python 3.13 原生类型参数语法。
+- Windows 构建脚本会读取 .venv 的实际解释器版本；不是精确的 3.13.2 时立即停止 PyInstaller 构建。
+- README 和打包配置测试已同步，后续开发、测试和 Windows 打包均以本机 Python 3.13.2 为基线。
+
 ## 修改的文件
+
+### Python 3.13.2 本机构建基线
+
+- .python-version
+- DEVELOPMENT_STATUS.md
+- README.md
+- app/data/cache/memory_cache.py
+- pyproject.toml
+- scripts/build_windows.ps1
+- tests/unit/test_packaging_config.py
 
 ### Phase 1B
 
@@ -443,6 +460,16 @@
 
 ## 测试结果
 
+Python 3.13.2 本机构建基线更新已执行：
+
+- .\.venv\Scripts\python.exe --version：Python 3.13.2。
+- .\.venv\Scripts\python.exe -m pytest：通过，104 个测试通过，2 个真实网络测试默认跳过，2 个子测试通过。
+- .\.venv\Scripts\python.exe -m ruff check .：以 py313 目标通过，All checks passed!。
+- .\.venv\Scripts\python.exe -m compileall -q app main.py tests：通过。
+- .\.venv\Scripts\python.exe -m pip check：通过，No broken requirements found.。
+- scripts/build_windows.ps1 PowerShell 语法解析：通过。
+- Windows 构建版本门禁：通过，实际解释器为 3.13.2。
+
 Phase 1B 已执行：
 
 - .\.venv\Scripts\python.exe -m pytest：通过，103 个测试通过，2 个真实网络测试默认跳过，2 个子测试通过。
@@ -525,7 +552,6 @@ Phase 0A 已执行：
 - 本地机构化改造 Phase 0 无阻断失败项。
 - 本轮未重新执行真实网络集成测试；2 个真实网络测试按默认配置跳过，固定响应和 provider 注入测试已通过。
 - 本轮未重新执行 PyInstaller 打包；当前源码桌面版 offscreen 启动通过，上一稳定阶段的 Windows 打包曾通过。
-- 当前虚拟环境是 Python 3.13.2；项目仍以 Python 3.11 为最低版本和 ruff 目标，但尚未在 Python 3.11 环境复验。
 - 账户仓储当前基于标准库 `sqlite3` 的显式事务，尚未迁移到 SQLAlchemy ORM；不影响当前 SQLite 持久化能力。
 - 回测仍为基础骨架，不含完整卖出、组合再平衡、复权、分红、真实沪深300和财务披露时点控制。
 - 真实分时线和可靠历史财务披露时点尚未接入。
@@ -542,4 +568,4 @@ Phase 0A 已执行：
 
 ## 下一条恢复命令或任务
 
-从 feat/local-correctness-core 执行 git status --short --branch、git log -5 --oneline、.\.venv\Scripts\python.exe -m pytest；确认 Phase 1B 收盘 NEXT_OPEN 编排提交存在且工作区干净后，从 LocalTradingDayScheduler 的任务运行状态持久化和开盘批量续撮入口开始 Phase 1C。
+从 feat/local-correctness-core 执行 git status --short --branch、git log -5 --oneline、.\.venv\Scripts\python.exe --version、.\.venv\Scripts\python.exe -m pytest；确认 Python 3.13.2 构建基线提交和 Phase 1B 收盘 NEXT_OPEN 编排提交存在且工作区干净后，从 LocalTradingDayScheduler 的任务运行状态持久化和开盘批量续撮入口开始 Phase 1C。

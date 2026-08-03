@@ -3,18 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import RLock
-from typing import Generic, TypeVar
-
-T = TypeVar("T")
 
 
 @dataclass
-class CacheEntry(Generic[T]):
+class CacheEntry[T]:
     value: T
     expires_at: datetime
 
 
-class TtlMemoryCache(Generic[T]):
+class TtlMemoryCache[T]:
     """轻量内存缓存，阶段2用于Mock和后续适配器共用。"""
 
     def __init__(self, ttl_seconds: int) -> None:

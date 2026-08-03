@@ -14,7 +14,7 @@
 
 ## 技术栈
 
-- Python 3.11
+- Python 3.13.2（本机开发、测试和 Windows 打包基线）
 - PySide6
 - pandas、numpy、SQLAlchemy、AkShare、requests、truststore
 - SQLite：账户、持仓、订单、成交和运行数据持久化
