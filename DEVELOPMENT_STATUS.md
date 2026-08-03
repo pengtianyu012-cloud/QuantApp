@@ -303,6 +303,7 @@
 - Ruff 目标从 py311 更新为 py313；旧式 Generic/TypeVar 缓存类已迁移到 Python 3.13 原生类型参数语法。
 - Windows 构建脚本会读取 .venv 的实际解释器版本；不是精确的 3.13.2 时立即停止 PyInstaller 构建。
 - README 和打包配置测试已同步，后续开发、测试和 Windows 打包均以本机 Python 3.13.2 为基线。
+- 本地稳定提交：a9f406a build: standardize on Python 3.13.2。
 
 ## 修改的文件
 
@@ -546,6 +547,8 @@ Phase 0A 已执行：
 
 ## 当前失败项
 
+- GitHub 推送当前被本机网络阻断：github.com TCP 443、SSH 22 和 ssh.github.com 443 均无法建立 TCP 连接；DNS 与 Ping 正常，尚未进入 GitHub 登录认证阶段。
+- 待网络恢复后执行 git push -u origin feat/local-correctness-core；该分支包含 Phase 1A、Phase 1B 和 Python 3.13.2 构建基线提交。
 - Phase 1B 无阻断失败项。
 - Phase 1C 尚未实现：桌面端不会自动在收盘触发任务，也不会在开盘批量续撮、执行取消/过期策略或生成每日自动对账报告。
 - Phase 1A 无阻断失败项。
@@ -560,12 +563,12 @@ Phase 0A 已执行：
 
 ## 下一步准确任务
 
-1. 实现 LocalTradingDayScheduler，使用注入 Clock 和 TradingCalendar 保证每个交易日收盘任务最多执行一次，并持久化任务运行状态供重启恢复。
-2. 实现开盘批量执行入口：先推进 T+1 可卖数量，再按每个订单的股票读取当日新鲜行情，续撮 PENDING_NEXT_OPEN、DEFERRED 和 PARTIALLY_FILLED 订单。
-3. 定义并测试取消与过期策略：停牌、涨跌停和限价不满足按规则顺延；用户取消立即终止；超过明确交易日上限后 EXPIRED，终态不得复活。
-4. 新增每日自动对账报告，核对期初现金、成交现金流、费用、期末现金、持仓市值、总资产、订单剩余量和信号关联完整性。
+1. 网络恢复后先执行 git push -u origin feat/local-correctness-core，并确认远端分支包含本地最近提交。
+2. 实现 LocalTradingDayScheduler，使用注入 Clock 和 TradingCalendar 保证每个交易日收盘任务最多执行一次，并持久化任务运行状态供重启恢复。
+3. 实现开盘批量执行入口：先推进 T+1 可卖数量，再按每个订单的股票读取当日新鲜行情，续撮 PENDING_NEXT_OPEN、DEFERRED 和 PARTIALLY_FILLED 订单。
+4. 定义并测试取消与过期策略，并新增每日自动对账报告。
 5. 将任务状态和最近执行结果接入 PySide6 桌面诊断/策略页面，网络与批量撮合继续在后台线程运行；稳定后提交 Phase 1C。
 
 ## 下一条恢复命令或任务
 
-从 feat/local-correctness-core 执行 git status --short --branch、git log -5 --oneline、.\.venv\Scripts\python.exe --version、.\.venv\Scripts\python.exe -m pytest；确认 Python 3.13.2 构建基线提交和 Phase 1B 收盘 NEXT_OPEN 编排提交存在且工作区干净后，从 LocalTradingDayScheduler 的任务运行状态持久化和开盘批量续撮入口开始 Phase 1C。
+从 feat/local-correctness-core 执行 git status --short --branch、git log -5 --oneline、.\.venv\Scripts\python.exe --version；确认工作区干净后先执行 git push -u origin feat/local-correctness-core。推送成功后运行 .\.venv\Scripts\python.exe -m pytest，再从 LocalTradingDayScheduler 的任务运行状态持久化和开盘批量续撮入口开始 Phase 1C。
