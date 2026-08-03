@@ -7,7 +7,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.config import default_runtime_paths
-from app.database.schema import MIGRATION_STATEMENTS, SCHEMA_STATEMENTS, SCHEMA_VERSION
+from app.database.schema import (
+    MIGRATION_STATEMENTS,
+    POST_MIGRATION_STATEMENTS,
+    SCHEMA_STATEMENTS,
+    SCHEMA_VERSION,
+)
 
 DEFAULT_DATABASE_NAME = "quant_app.sqlite3"
 
@@ -58,6 +63,8 @@ def initialize_database(db_path: Path | None = None) -> Path:
                     "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                     (version, datetime.now(UTC).isoformat()),
                 )
+        for statement in POST_MIGRATION_STATEMENTS:
+            connection.execute(statement)
     return path
 
 

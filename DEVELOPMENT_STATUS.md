@@ -118,9 +118,15 @@
 - 0C：净值回撤、成本账务与追加式持久化
 - 0D：桌面端集成、迁移文档与完整验收
 
+### 本地机构化改造 Phase 1：本地交易编排与研究真实性
+
+- 1A：收盘信号追加式持久化与订单关联账本
+- 1B：收盘信号到下一交易日 NEXT_OPEN 订单编排
+- 1C：开盘续撮、取消/过期策略与每日自动对账
+
 ## 当前阶段
 
-本地机构化改造 Phase 0 已完成；下一阶段为 Phase 1 本地交易编排与研究真实性。
+本地机构化改造 Phase 1A 已完成；当前下一阶段为 Phase 1B 收盘信号到下一交易日 NEXT_OPEN 订单编排。
 
 ## GitHub 仓库连接
 
@@ -271,7 +277,29 @@
 - FastAPI、React、Docker、PostgreSQL、Redis 和华为云资源审计均为零命中。
 - Phase 0D 稳定提交：docs: complete local correctness phase zero（见当前分支最近提交）。
 
+### Phase 1A：收盘信号追加式持久化与订单关联账本
+
+- SQLite schema 升级到 v4，为信号保存目标仓位、账户、计划交易日、派发状态、关联订单、处理结果和处理时间。
+- 新增追加式 SignalRepository；同一账户、策略、股票、方向和信号时点生成稳定 signal_id，重复收盘任务不会重复插入。
+- 信号派发状态支持 pending、order_created、skipped 和 rejected，并可在应用重启后恢复。
+- Order 新增 signal_id；数据库使用非空唯一索引约束一个信号最多关联一个订单。
+- 模拟账户支持注入确定性 order_id 和 signal_id，并在内存层拒绝重复订单或重复信号关联。
+- v3 到 v4 迁移保留旧信号和订单数据，补充默认派发状态并在迁移后建立索引。
+
 ## 修改的文件
+
+### Phase 1A
+
+- DEVELOPMENT_STATUS.md
+- app/database/__init__.py
+- app/database/account_repository.py
+- app/database/connection.py
+- app/database/schema.py
+- app/database/signal_repository.py
+- app/models/trading.py
+- app/portfolio/account.py
+- tests/unit/test_database.py
+- tests/unit/test_signal_repository.py
 
 ### Phase 0D
 
@@ -388,6 +416,14 @@
 
 ## 测试结果
 
+Phase 1A 已执行：
+
+- .\.venv\Scripts\python.exe -m pytest：通过，91 个测试通过，2 个真实网络测试默认跳过，2 个子测试通过。
+- .\.venv\Scripts\python.exe -m ruff check .：通过，All checks passed!。
+- .\.venv\Scripts\python.exe -m compileall -q app main.py tests：通过。
+- git diff --check：通过；仅提示工作区 LF 将按 Git 配置转换为 CRLF，无空白错误。
+- 信号幂等写入、派发状态恢复、signal_id 订单关联恢复和 v3 到 v4 真实旧表迁移测试：通过。
+
 Phase 0D 与 Phase 0 最终验收已执行：
 
 - .\.venv\Scripts\python.exe -m pytest：通过，88 个测试通过，2 个真实网络测试默认跳过，2 个子测试通过。
@@ -447,6 +483,8 @@ Phase 0A 已执行：
 
 ## 当前失败项
 
+- Phase 1A 无阻断失败项。
+- Phase 1B 尚未实现：当前信号账本不会自动执行收盘时点校验、目标仓位换算或创建 NEXT_OPEN 订单。
 - 本地机构化改造 Phase 0 无阻断失败项。
 - 本轮未重新执行真实网络集成测试；2 个真实网络测试按默认配置跳过，固定响应和 provider 注入测试已通过。
 - 本轮未重新执行 PyInstaller 打包；当前源码桌面版 offscreen 启动通过，上一稳定阶段的 Windows 打包曾通过。
@@ -459,12 +497,12 @@ Phase 0A 已执行：
 
 ## 下一步准确任务
 
-1. 建立本地交易日任务编排：收盘后持久化信号，下一交易日开盘生成/续撮 NEXT_OPEN 订单，并定义取消与过期策略。
-2. 扩展组合级回测与模拟盘卖出/再平衡流程，复用同一订单状态机、成本模型、风控和账务核对。
-3. 建立时点一致的历史股票池、财务披露可得日和沪深300基准数据质量检查，明确幸存者偏差边界。
-4. 增加每日自动对账与异常报告，核对现金、持仓、成交、费用、净值快照和订单审计事件。
-5. Phase 1 继续保持 PySide6 + SQLite 本地桌面架构，不新增 Alpha 策略，不引入云或 Web 技术栈。
+1. 实现 CloseSignalOrchestrator：只接受交易日 15:00 后的收盘信号，先追加持久化，再为下一交易日 09:30 创建 NEXT_OPEN 订单。
+2. 按 suggested_position_pct、当前持仓、未完成买单和可用现金计算 100 股整数倍订单；达到真实 15% 回撤时禁止新增买入但允许卖出。
+3. 使用 signal_id 和确定性 order_id 保证重复点击、任务重跑和应用重启均不重复创建订单，并恢复 pending 信号。
+4. research 模式只持久化研究信号并标记不可派单；paper/mock 模式允许创建本地模拟订单，所有模式禁止隐式 Mock。
+5. 为交易日/收盘时点、目标仓位、组合预留风险、幂等恢复和数据库失败后重试补充测试；稳定后更新本文件并提交 Phase 1B。
 
 ## 下一条恢复命令或任务
 
-从 feat/local-correctness-core 执行 git status --short --branch、git log -5 --oneline、.\.venv\Scripts\python.exe -m pytest；确认最近提交为 docs: complete local correctness phase zero 且工作区干净后，从“收盘信号持久化到下一交易日 NEXT_OPEN 编排”开始 Phase 1。
+从 feat/local-correctness-core 执行 git status --short --branch、git log -5 --oneline、.\.venv\Scripts\python.exe -m pytest；确认 Phase 1A 信号账本提交存在且工作区干净后，从 CloseSignalOrchestrator 的收盘时点校验和幂等 NEXT_OPEN 订单创建开始 Phase 1B。

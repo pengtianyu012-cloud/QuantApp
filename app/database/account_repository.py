@@ -175,12 +175,13 @@ class AccountRepository:
                 connection.executemany(
                     """
                     INSERT INTO orders (
-                        order_id, account_id, symbol, side, order_type, quantity,
+                        order_id, account_id, signal_id, symbol, side, order_type, quantity,
                         limit_price, status, reason, eligible_at, filled_quantity,
                         remaining_quantity, submitted_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(order_id) DO UPDATE SET
                         account_id = excluded.account_id,
+                        signal_id = excluded.signal_id,
                         symbol = excluded.symbol,
                         side = excluded.side,
                         order_type = excluded.order_type,
@@ -197,6 +198,7 @@ class AccountRepository:
                         (
                             order.order_id,
                             order.account_id,
+                            order.signal_id,
                             order.symbol,
                             order.side.value,
                             order.order_type.value,
@@ -331,6 +333,7 @@ class AccountRepository:
             filled_quantity=int(row["filled_quantity"]),
             remaining_quantity=int(row["remaining_quantity"]),
             updated_at=cls._parse_datetime(str(row["updated_at"])),
+            signal_id=str(row["signal_id"]) if row["signal_id"] is not None else None,
         )
 
     @classmethod

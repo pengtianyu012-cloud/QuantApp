@@ -112,14 +112,23 @@ class SimulatedAccount:
         order_type: OrderType = OrderType.NEXT_OPEN,
         limit_price: Decimal | None = None,
         eligible_at: datetime | None = None,
+        order_id: str | None = None,
+        signal_id: str | None = None,
     ) -> Order:
         if side is OrderSide.BUY and not is_valid_buy_quantity(quantity):
             raise AccountError("普通A股买入数量必须是100股整数倍")
         if quantity <= 0:
             raise AccountError("订单数量必须大于0")
+        resolved_order_id = order_id or f"O-{uuid4().hex[:12]}"
+        if any(item.order_id == resolved_order_id for item in self.orders):
+            raise AccountError(f"订单号已存在：{resolved_order_id}")
+        if signal_id is not None and any(
+            item.signal_id == signal_id for item in self.orders
+        ):
+            raise AccountError(f"信号已生成订单：{signal_id}")
 
         created = Order(
-            order_id=f"O-{uuid4().hex[:12]}",
+            order_id=resolved_order_id,
             account_id=self.account_id,
             symbol=symbol,
             side=side,
@@ -130,6 +139,7 @@ class SimulatedAccount:
             status=OrderStatus.CREATED,
             eligible_at=eligible_at,
             updated_at=submitted_at,
+            signal_id=signal_id,
         )
         self.orders.append(created)
         self._append_order_event(created, submitted_at, "订单已创建")

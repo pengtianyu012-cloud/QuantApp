@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 CORE_TABLES = [
     "instruments",
@@ -154,6 +154,13 @@ SCHEMA_STATEMENTS = [
         direction TEXT NOT NULL,
         strength TEXT NOT NULL,
         reason TEXT NOT NULL,
+        suggested_position_pct TEXT NOT NULL DEFAULT '0',
+        account_id TEXT,
+        scheduled_for TEXT,
+        dispatch_status TEXT NOT NULL DEFAULT 'not_scheduled',
+        order_id TEXT,
+        dispatch_message TEXT NOT NULL DEFAULT '',
+        processed_at TEXT,
         created_at TEXT NOT NULL
     )
     """,
@@ -192,6 +199,7 @@ SCHEMA_STATEMENTS = [
     CREATE TABLE IF NOT EXISTS orders (
         order_id TEXT PRIMARY KEY,
         account_id TEXT NOT NULL,
+        signal_id TEXT,
         symbol TEXT NOT NULL,
         side TEXT NOT NULL,
         order_type TEXT NOT NULL,
@@ -354,4 +362,23 @@ MIGRATION_STATEMENTS = {
         ") SELECT 'LEGACY-' || order_id, order_id, status, updated_at, "
         "COALESCE(reason, 'v3迁移'), filled_quantity, remaining_quantity FROM orders",
     ],
+    4: [
+        "ALTER TABLE signals ADD COLUMN suggested_position_pct "
+        "TEXT NOT NULL DEFAULT '0'",
+        "ALTER TABLE signals ADD COLUMN account_id TEXT",
+        "ALTER TABLE signals ADD COLUMN scheduled_for TEXT",
+        "ALTER TABLE signals ADD COLUMN dispatch_status "
+        "TEXT NOT NULL DEFAULT 'not_scheduled'",
+        "ALTER TABLE signals ADD COLUMN order_id TEXT",
+        "ALTER TABLE signals ADD COLUMN dispatch_message TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE signals ADD COLUMN processed_at TEXT",
+        "ALTER TABLE orders ADD COLUMN signal_id TEXT",
+    ],
 }
+
+POST_MIGRATION_STATEMENTS = [
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_signal_id "
+    "ON orders(signal_id) WHERE signal_id IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_signals_dispatch "
+    "ON signals(account_id, dispatch_status, scheduled_for)",
+]

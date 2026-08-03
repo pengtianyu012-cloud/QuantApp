@@ -8,6 +8,14 @@ from app.database.connection import (
     list_tables,
 )
 from app.database.schema import CORE_TABLES, SCHEMA_VERSION
+from app.database.signal_repository import (
+    PersistedSignal,
+    PersistSignalsResult,
+    SignalDispatchStatus,
+    SignalRepository,
+    SignalRepositoryError,
+    build_signal_id,
+)
 
 __all__ = [
     "AccountRepository",
@@ -15,6 +23,12 @@ __all__ = [
     "CORE_TABLES",
     "DEFAULT_DATABASE_NAME",
     "SCHEMA_VERSION",
+    "PersistedSignal",
+    "PersistSignalsResult",
+    "SignalDispatchStatus",
+    "SignalRepository",
+    "SignalRepositoryError",
+    "build_signal_id",
     "connect_database",
     "default_database_path",
     "get_schema_version",

@@ -247,6 +247,91 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(event_count, 1)
             self.assertEqual(snapshot_count, 1)
 
+    def test_version_three_database_migrates_signal_dispatch_columns(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "legacy-v3.sqlite3"
+            connection = sqlite3.connect(db_path)
+            connection.executescript(
+                """
+                CREATE TABLE schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                );
+                CREATE TABLE signals (
+                    signal_id TEXT PRIMARY KEY,
+                    strategy_id TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    signal_time TEXT NOT NULL,
+                    market_time TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    direction TEXT NOT NULL,
+                    strength TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE orders (
+                    order_id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    side TEXT NOT NULL,
+                    order_type TEXT NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    limit_price TEXT,
+                    status TEXT NOT NULL,
+                    reason TEXT,
+                    eligible_at TEXT,
+                    filled_quantity INTEGER NOT NULL DEFAULT 0,
+                    remaining_quantity INTEGER NOT NULL,
+                    submitted_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            timestamp = "2030-08-06T15:00:00+08:00"
+            connection.execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (3, ?)",
+                (timestamp,),
+            )
+            connection.execute(
+                "INSERT INTO signals VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "S-LEGACY",
+                    "均线趋势",
+                    "000001.SZ",
+                    timestamp,
+                    timestamp,
+                    "legacy",
+                    "买入",
+                    "0.5",
+                    "legacy signal",
+                    timestamp,
+                ),
+            )
+            connection.commit()
+            connection.close()
+
+            initialize_database(db_path)
+
+            with connect_database(db_path) as migrated:
+                signal = migrated.execute(
+                    "SELECT * FROM signals WHERE signal_id = 'S-LEGACY'"
+                ).fetchone()
+                order_columns = {
+                    str(row["name"])
+                    for row in migrated.execute("PRAGMA table_info(orders)").fetchall()
+                }
+                index_names = {
+                    str(row["name"])
+                    for row in migrated.execute("PRAGMA index_list(orders)").fetchall()
+                }
+
+            assert signal is not None
+            self.assertEqual(get_schema_version(db_path), SCHEMA_VERSION)
+            self.assertEqual(signal["dispatch_status"], "not_scheduled")
+            self.assertEqual(signal["suggested_position_pct"], "0")
+            self.assertIn("signal_id", order_columns)
+            self.assertIn("idx_orders_signal_id", index_names)
+
 
 if __name__ == "__main__":
     unittest.main()

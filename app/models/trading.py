@@ -59,6 +59,7 @@ class Order:
     filled_quantity: int = 0
     remaining_quantity: int | None = None
     updated_at: datetime | None = None
+    signal_id: str | None = None
 
     def __post_init__(self) -> None:
         remaining = (
