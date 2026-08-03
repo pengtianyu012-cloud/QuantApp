@@ -111,7 +111,10 @@ class TradingAppService:
         quotes = self.get_watchlist_quotes()
         latest_prices = {quote.symbol: quote.last_price for quote in quotes}
         health = self.provider_health()
-        quote_delay = max((quote.delay_seconds for quote in quotes), default=None)
+        quote_delay = max(
+            (quote_age_seconds(self.clock.now(), quote.quote_time) for quote in quotes),
+            default=None,
+        )
         return {
             "market_status": {
                 RuntimeMode.MOCK: "Mock离线模式",
@@ -126,6 +129,9 @@ class TradingAppService:
             "account_total": format_money(self.account.total_assets(latest_prices)),
             "cash": format_money(self.account.cash),
             "market_value": format_money(self.account.market_value(latest_prices)),
+            "current_drawdown": format_ratio(self.account.current_drawdown),
+            "max_drawdown": format_ratio(self.account.max_drawdown),
+            "cumulative_fees": format_money(self.account.cumulative_fees),
             "persistence_status": "正常" if not self.persistence_error else "不可用",
             "risk_status": self.account.risk_status,
             "running_strategy": "未运行",
@@ -427,6 +433,24 @@ class TradingAppService:
 
 def format_money(value: Decimal) -> str:
     return f"¥{value:,.2f}"
+
+
+def format_ratio(value: Decimal) -> str:
+    return f"{value * Decimal('100'):.2f}%"
+
+
+def quote_age_seconds(current_time: datetime, quote_time: datetime) -> int:
+    current = (
+        current_time.replace(tzinfo=APP_TIME_ZONE)
+        if current_time.tzinfo is None or current_time.utcoffset() is None
+        else current_time.astimezone(APP_TIME_ZONE)
+    )
+    quoted = (
+        quote_time.replace(tzinfo=APP_TIME_ZONE)
+        if quote_time.tzinfo is None or quote_time.utcoffset() is None
+        else quote_time.astimezone(APP_TIME_ZONE)
+    )
+    return max(0, int((current - quoted).total_seconds()))
 
 
 def build_default_market_data_provider(

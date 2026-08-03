@@ -16,8 +16,8 @@ class BacktestEngineTests(unittest.TestCase):
         result = engine.run(
             strategy,
             "000001.SZ",
-            date(2026, 4, 1),
-            date(2026, 7, 27),
+            date(2030, 4, 1),
+            date(2030, 8, 6),
             initial_cash=Decimal("100000"),
             quantity=100,
         )

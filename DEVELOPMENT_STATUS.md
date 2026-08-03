@@ -120,7 +120,7 @@
 
 ## 当前阶段
 
-Phase 0C 已完成；下一子阶段为 0D 桌面端集成、迁移文档与完整验收。
+本地机构化改造 Phase 0 已完成；下一阶段为 Phase 1 本地交易编排与研究真实性。
 
 ## GitHub 仓库连接
 
@@ -204,7 +204,7 @@ Phase 0C 已完成；下一子阶段为 0D 桌面端集成、迁移文档与完�
 ### 阶段 9：真实免费行情与后台刷新
 
 - 新增 `AkSharePublicMarketDataProvider`，统一接入交易所股票主表、AkShare 历史接口和腾讯公开网页实时行情。
-- 2026-07-27 实测上交所主板 1698 只、科创板 612 只、深交所 A 股 2892 只，合计 5202 只，不含北交所。
+- 历史人工验收曾实测上交所主板 1698 只、科创板 612 只、深交所 A 股 2892 只，合计 5202 只，不含北交所。
 - 真实最新价、涨跌、OHLC、成交量、成交额、换手率、行情时间、买卖五档、内盘和外盘已实测成功。
 - 腾讯成交量和盘口量按“手”转换为“股”；委比、委差和精确到股的成交量标记为不支持，不伪造。
 - 日线以 AkShare/东方财富为主源，企业代理偶发断连时使用低频 AkShare/新浪备用；交易日历已实测。
@@ -259,7 +259,44 @@ Phase 0C 已完成；下一子阶段为 0D 桌面端集成、迁移文档与完�
 - 桌面端股票资格提示使用服务注入的 Clock，不再通过隐式系统日期判断。
 - Phase 0C 稳定提交：feat: persist portfolio correctness ledger（见当前分支最近提交）。
 
+### Phase 0D：桌面端集成、迁移文档与完整验收
+
+- 总览新增当前回撤、最大回撤和累计费用，行情延迟按 Clock 当前时间与行情时间动态计算。
+- 模拟交易页展示订单类型、已成交量、剩余量、可撮合时间，以及成交参考价和全部成本分项。
+- 审计宽表按内容调整列宽并支持横向滚动，避免时间与成本字段被压缩重叠。
+- 真实模式界面不再显示 Mock 骨架、Mock 信号或按 Mock 行情估值等误导文案。
+- README、架构、交易规则、回测假设、数据源和用户指南已统一 mock/research/paper 行为。
+- 新增 v2 到 v3 数据库迁移文档，记录备份、字段/状态映射、成本口径和回退方式。
+- 运行代码、文档和测试已移除旧固定演示日期；确定性测试使用显式日期或 FrozenClock，不进入业务逻辑。
+- FastAPI、React、Docker、PostgreSQL、Redis 和华为云资源审计均为零命中。
+- Phase 0D 稳定提交：docs: complete local correctness phase zero（见当前分支最近提交）。
+
 ## 修改的文件
+
+### Phase 0D
+
+- DEVELOPMENT_STATUS.md
+- README.md
+- app/services/trading_app_service.py
+- app/ui/main_window.py
+- docs/ARCHITECTURE.md
+- docs/BACKTEST_ASSUMPTIONS.md
+- docs/DATA_QUALITY.md
+- docs/DATA_SOURCES.md
+- docs/MIGRATION_PHASE0.md
+- docs/TRADING_RULES.md
+- docs/USER_GUIDE.md
+- tests/integration/test_ui_manual_order.py
+- tests/unit/test_account.py
+- tests/unit/test_account_repository.py
+- tests/unit/test_akshare_public_provider.py
+- tests/unit/test_backtest_engine.py
+- tests/unit/test_database.py
+- tests/unit/test_mock_market_data.py
+- tests/unit/test_risk.py
+- tests/unit/test_strategies.py
+- tests/unit/test_trading_app_service.py
+- tests/unit/test_trading_rules.py
 
 ### Phase 0C
 
@@ -351,6 +388,15 @@ Phase 0C 已完成；下一子阶段为 0D 桌面端集成、迁移文档与完�
 
 ## 测试结果
 
+Phase 0D 与 Phase 0 最终验收已执行：
+
+- .\.venv\Scripts\python.exe -m pytest：通过，88 个测试通过，2 个真实网络测试默认跳过，2 个子测试通过。
+- .\.venv\Scripts\python.exe -m ruff check .：通过，All checks passed!。
+- .\.venv\Scripts\python.exe -m compileall -q app main.py tests：通过。
+- git diff --check：通过。
+- PySide6 offscreen 启动：窗口可见，10 个页面、12 张指标卡、12 列订单表和 15 列成交表均成功构造。
+- 固定日期、隐式真实模式 Mock 文案和禁用云/Web 技术栈审计：通过。
+
 Phase 0C 已执行：
 
 - .\.venv\Scripts\python.exe -m pytest：通过，87 个测试通过，2 个真实网络测试默认跳过，2 个子测试通过。
@@ -401,9 +447,9 @@ Phase 0A 已执行：
 
 ## 当前失败项
 
-- Phase 0C 无阻断失败项。
-- Phase 0D 尚未完成：桌面端回撤/费用展示、README 与迁移文档、最终启动检查和完整验收待执行。
-- 本轮数据库持久化、真实行情接入和 Windows 打包启动没有阻断失败项。
+- 本地机构化改造 Phase 0 无阻断失败项。
+- 本轮未重新执行真实网络集成测试；2 个真实网络测试按默认配置跳过，固定响应和 provider 注入测试已通过。
+- 本轮未重新执行 PyInstaller 打包；当前源码桌面版 offscreen 启动通过，上一稳定阶段的 Windows 打包曾通过。
 - 当前虚拟环境是 Python 3.13.2；项目仍以 Python 3.11 为最低版本和 ruff 目标，但尚未在 Python 3.11 环境复验。
 - 账户仓储当前基于标准库 `sqlite3` 的显式事务，尚未迁移到 SQLAlchemy ORM；不影响当前 SQLite 持久化能力。
 - 回测仍为基础骨架，不含完整卖出、组合再平衡、复权、分红、真实沪深300和财务披露时点控制。
@@ -413,11 +459,12 @@ Phase 0A 已执行：
 
 ## 下一步准确任务
 
-1. 在桌面总览和模拟交易页展示当前回撤、最大回撤、累计费用、订单已成交量与剩余量。
-2. 更新 README、架构、用户指南和迁移说明，准确描述 mock/research/paper、v3 数据库和成本口径。
-3. 审计生产代码和文档中的固定演示日期、隐式 Mock、云/Web 技术栈和过期能力描述。
-4. 执行完整 pytest、ruff、compileall 和 PySide6 offscreen 启动检查，记录最终 Phase 0 验收结果。
+1. 建立本地交易日任务编排：收盘后持久化信号，下一交易日开盘生成/续撮 NEXT_OPEN 订单，并定义取消与过期策略。
+2. 扩展组合级回测与模拟盘卖出/再平衡流程，复用同一订单状态机、成本模型、风控和账务核对。
+3. 建立时点一致的历史股票池、财务披露可得日和沪深300基准数据质量检查，明确幸存者偏差边界。
+4. 增加每日自动对账与异常报告，核对现金、持仓、成交、费用、净值快照和订单审计事件。
+5. Phase 1 继续保持 PySide6 + SQLite 本地桌面架构，不新增 Alpha 策略，不引入云或 Web 技术栈。
 
 ## 下一条恢复命令或任务
 
-从 feat/local-correctness-core 执行 git status --short --branch、git log -5 --oneline、.\.venv\Scripts\python.exe -m pytest；确认最近提交为 feat: persist portfolio correctness ledger 且工作区干净后，从桌面端回撤/费用/订单剩余量展示开始 Phase 0D。
+从 feat/local-correctness-core 执行 git status --short --branch、git log -5 --oneline、.\.venv\Scripts\python.exe -m pytest；确认最近提交为 docs: complete local correctness phase zero 且工作区干净后，从“收盘信号持久化到下一交易日 NEXT_OPEN 编排”开始 Phase 1。

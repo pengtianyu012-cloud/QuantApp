@@ -24,7 +24,7 @@ class AccountRepositoryTests(unittest.TestCase):
 
     def test_account_round_trip_preserves_cash_t_plus_one_orders_and_fills(self) -> None:
         account = SimulatedAccount()
-        trade_time = datetime(2026, 7, 27, 9, 30, tzinfo=APP_TIME_ZONE)
+        trade_time = datetime(2030, 8, 6, 9, 30, tzinfo=APP_TIME_ZONE)
         order = account.submit_order("000001.SZ", OrderSide.BUY, 100, trade_time)
         account.apply_fill(order, Decimal("10.80"), 100, trade_time, stock_name="平安银行")
         account.update_order_status(order, OrderStatus.FILLED, "测试成交")
@@ -37,14 +37,14 @@ class AccountRepositoryTests(unittest.TestCase):
         self.assertEqual(restored.cash, account.cash)
         self.assertEqual(restored.positions["000001.SZ"].name, "平安银行")
         self.assertEqual(restored.positions["000001.SZ"].available_quantity, 0)
-        self.assertEqual(restored.positions["000001.SZ"].last_buy_date.isoformat(), "2026-07-27")
+        self.assertEqual(restored.positions["000001.SZ"].last_buy_date.isoformat(), "2030-08-06")
         self.assertEqual(restored.orders[0].status, OrderStatus.FILLED)
         self.assertEqual(restored.fills[0].price, Decimal("10.80"))
         self.assertIsNotNone(restored.orders[0].submitted_at.utcoffset())
 
     def test_repeated_save_is_idempotent_and_next_day_state_persists(self) -> None:
         account = SimulatedAccount()
-        trade_time = datetime(2026, 7, 27, 9, 30, tzinfo=APP_TIME_ZONE)
+        trade_time = datetime(2030, 8, 6, 9, 30, tzinfo=APP_TIME_ZONE)
         order = account.submit_order("000001.SZ", OrderSide.BUY, 100, trade_time)
         account.apply_fill(order, Decimal("10.80"), 100, trade_time)
         account.update_order_status(order, OrderStatus.FILLED)
@@ -65,7 +65,7 @@ class AccountRepositoryTests(unittest.TestCase):
 
     def test_failed_snapshot_rolls_back_previous_state(self) -> None:
         account = SimulatedAccount()
-        trade_time = datetime(2026, 7, 27, 9, 30, tzinfo=APP_TIME_ZONE)
+        trade_time = datetime(2030, 8, 6, 9, 30, tzinfo=APP_TIME_ZONE)
         order = account.submit_order("000001.SZ", OrderSide.BUY, 100, trade_time)
         self.repository.save(account)
         account.orders.append(order)

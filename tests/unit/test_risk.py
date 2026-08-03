@@ -25,7 +25,7 @@ class RiskManagerTests(unittest.TestCase):
 
     def test_total_position_limit_blocks_buy(self) -> None:
         account = SimulatedAccount(cash=Decimal("100000"))
-        buy_time = datetime(2026, 7, 27, 9, 30)
+        buy_time = datetime(2030, 8, 6, 9, 30)
         order = account.submit_order("000001.SZ", OrderSide.BUY, 4000, buy_time)
         account.apply_fill(order, Decimal("20"), 4000, buy_time, stock_name="平安银行")
         manager = RiskManager()

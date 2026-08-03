@@ -71,7 +71,7 @@ class FakeAkShare:
         return pd.DataFrame(
             [
                 {
-                    "日期": date(2026, 7, 27),
+                    "日期": date(2030, 8, 6),
                     "开盘": 1308.0,
                     "收盘": 1289.5,
                     "最高": 1308.0,
@@ -83,7 +83,7 @@ class FakeAkShare:
         )
 
     def tool_trade_date_hist_sina(self):
-        return pd.DataFrame([{"trade_date": date(2026, 7, 27)}, {"trade_date": date(2026, 7, 29)}])
+        return pd.DataFrame([{"trade_date": date(2030, 8, 6)}, {"trade_date": date(2030, 8, 8)}])
 
 
 class FallbackDailyAkShare(FakeAkShare):
@@ -94,7 +94,7 @@ class FallbackDailyAkShare(FakeAkShare):
         return pd.DataFrame(
             [
                 {
-                    "date": date(2026, 7, 27),
+                    "date": date(2030, 8, 6),
                     "open": 1308.0,
                     "close": 1289.5,
                     "high": 1308.0,
@@ -138,7 +138,7 @@ def tencent_payload() -> bytes:
         26: "1",
         27: "1290.49",
         28: "1",
-        30: "20260727161456",
+        30: "20300806161456",
         31: "-7.91",
         32: "-0.61",
         33: "1308.00",
@@ -157,7 +157,7 @@ class AkSharePublicMarketDataProviderTests(unittest.TestCase):
             settings=RefreshSettings(max_retries=1),
             http_client=FakeHttpClient(payload or tencent_payload()),
             akshare_module=FakeAkShare(),
-            now_provider=lambda: datetime(2026, 7, 27, 16, 15, tzinfo=APP_TIME_ZONE),
+            now_provider=lambda: datetime(2030, 8, 6, 16, 15, tzinfo=APP_TIME_ZONE),
             sleeper=lambda _: None,
             monotonic=lambda: 1.0,
         )
@@ -201,8 +201,8 @@ class AkSharePublicMarketDataProviderTests(unittest.TestCase):
     def test_daily_bars_and_calendar_are_normalized(self) -> None:
         provider = self.create_provider()
 
-        bars = provider.get_daily_bars("600519.SH", date(2026, 7, 27), date(2026, 7, 27))
-        calendar = provider.get_trading_calendar(date(2026, 7, 27), date(2026, 7, 29))
+        bars = provider.get_daily_bars("600519.SH", date(2030, 8, 6), date(2030, 8, 6))
+        calendar = provider.get_trading_calendar(date(2030, 8, 6), date(2030, 8, 8))
 
         self.assertEqual(bars[0].volume, 3_199_000)
         self.assertEqual(bars[0].bar_time.tzinfo, APP_TIME_ZONE)
@@ -217,7 +217,7 @@ class AkSharePublicMarketDataProviderTests(unittest.TestCase):
             monotonic=lambda: 1.0,
         )
 
-        bars = provider.get_daily_bars("600519.SH", date(2026, 7, 27), date(2026, 7, 27))
+        bars = provider.get_daily_bars("600519.SH", date(2030, 8, 6), date(2030, 8, 6))
 
         self.assertEqual(bars[0].volume, 3_199_044)
         self.assertIn("新浪备用", bars[0].source)

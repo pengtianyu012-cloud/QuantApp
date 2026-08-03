@@ -38,17 +38,17 @@ class MockMarketDataProviderTests(unittest.TestCase):
         self.assertTrue(validate_order_book(order_book).ok)
 
     def test_trading_calendar_marks_weekends_closed(self) -> None:
-        calendar = self.provider.get_trading_calendar(date(2026, 7, 25), date(2026, 7, 27))
+        calendar = self.provider.get_trading_calendar(date(2030, 8, 3), date(2030, 8, 5))
 
         self.assertFalse(calendar[0].is_open)
         self.assertFalse(calendar[1].is_open)
         self.assertTrue(calendar[2].is_open)
 
     def test_daily_bars_do_not_include_weekends(self) -> None:
-        bars = self.provider.get_daily_bars("600519.SH", date(2026, 7, 24), date(2026, 7, 27))
+        bars = self.provider.get_daily_bars("600519.SH", date(2030, 8, 2), date(2030, 8, 5))
 
         self.assertEqual(
-            [bar.bar_time.date().isoformat() for bar in bars], ["2026-07-24", "2026-07-27"]
+            [bar.bar_time.date().isoformat() for bar in bars], ["2030-08-02", "2030-08-05"]
         )
 
 

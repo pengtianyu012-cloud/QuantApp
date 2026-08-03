@@ -30,8 +30,12 @@ class UiManualOrderTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual(window.positions_table.item(0, 0).text(), "000001.SZ")
-        self.assertEqual(window.orders_table.item(0, 5).text(), "已成交")
+        self.assertEqual(window.orders_table.item(0, 5).text(), "100")
+        self.assertEqual(window.orders_table.item(0, 6).text(), "0")
+        self.assertEqual(window.orders_table.item(0, 8).text(), "已成交")
         self.assertNotEqual(window.fills_table.item(0, 0).text(), "-")
+        self.assertEqual(window.fills_table.horizontalHeaderItem(11).text(), "市场冲击")
+        self.assertEqual(window.metric_value_labels["当前回撤"].text(), "0.01%")
 
         window.close()
         app.processEvents()

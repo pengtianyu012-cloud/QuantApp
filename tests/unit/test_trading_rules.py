@@ -31,16 +31,16 @@ class TradingRulesTests(unittest.TestCase):
         self.assertFalse(is_valid_sell_quantity(0))
 
     def test_t_plus_one_rule(self) -> None:
-        buy_date = datetime(2026, 7, 27).date()
-        self.assertFalse(is_t_plus_one_sell_allowed(buy_date, datetime(2026, 7, 27).date()))
-        self.assertTrue(is_t_plus_one_sell_allowed(buy_date, datetime(2026, 7, 28).date()))
+        buy_date = datetime(2030, 8, 6).date()
+        self.assertFalse(is_t_plus_one_sell_allowed(buy_date, datetime(2030, 8, 6).date()))
+        self.assertTrue(is_t_plus_one_sell_allowed(buy_date, datetime(2030, 8, 7).date()))
 
     def test_market_phase_uses_explicit_trading_day(self) -> None:
         self.assertEqual(
-            get_market_phase(datetime(2026, 7, 27, 9, 20, tzinfo=APP_TIME_ZONE), True), "集合竞价"
+            get_market_phase(datetime(2030, 8, 6, 9, 20, tzinfo=APP_TIME_ZONE), True), "集合竞价"
         )
         self.assertEqual(
-            get_market_phase(datetime(2026, 7, 27, 12, 0, tzinfo=APP_TIME_ZONE), True), "午间休市"
+            get_market_phase(datetime(2030, 8, 6, 12, 0, tzinfo=APP_TIME_ZONE), True), "午间休市"
         )
         self.assertEqual(
             get_market_phase(datetime(2026, 7, 26, 10, 0, tzinfo=APP_TIME_ZONE), False), "非交易日"

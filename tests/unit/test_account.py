@@ -10,7 +10,7 @@ from app.portfolio import AccountError, SimulatedAccount
 class SimulatedAccountTests(unittest.TestCase):
     def test_buy_reduces_cash_and_position_is_not_sellable_same_day(self) -> None:
         account = SimulatedAccount()
-        submitted_at = datetime(2026, 7, 27, 9, 30)
+        submitted_at = datetime(2030, 8, 6, 9, 30)
         order = account.submit_order("600519.SH", OrderSide.BUY, 100, submitted_at)
 
         account.apply_fill(order, Decimal("100"), 100, submitted_at, stock_name="贵州茅台")
@@ -21,7 +21,7 @@ class SimulatedAccountTests(unittest.TestCase):
 
     def test_t_plus_one_blocks_same_day_sell_and_allows_next_day(self) -> None:
         account = SimulatedAccount()
-        buy_time = datetime(2026, 7, 27, 9, 30)
+        buy_time = datetime(2030, 8, 6, 9, 30)
         buy_order = account.submit_order("600519.SH", OrderSide.BUY, 100, buy_time)
         account.apply_fill(buy_order, Decimal("100"), 100, buy_time, stock_name="贵州茅台")
 
@@ -30,7 +30,7 @@ class SimulatedAccountTests(unittest.TestCase):
             account.apply_fill(sell_order, Decimal("101"), 100, buy_time)
 
         account.advance_trading_day()
-        sell_time = datetime(2026, 7, 28, 9, 30)
+        sell_time = datetime(2030, 8, 7, 9, 30)
         next_sell_order = account.submit_order("600519.SH", OrderSide.SELL, 100, sell_time)
         account.apply_fill(next_sell_order, Decimal("101"), 100, sell_time)
 
@@ -39,7 +39,7 @@ class SimulatedAccountTests(unittest.TestCase):
 
     def test_total_assets_uses_latest_prices(self) -> None:
         account = SimulatedAccount()
-        buy_time = datetime(2026, 7, 27, 9, 30)
+        buy_time = datetime(2030, 8, 6, 9, 30)
         order = account.submit_order("000001.SZ", OrderSide.BUY, 1000, buy_time)
         account.apply_fill(order, Decimal("10"), 1000, buy_time, stock_name="平安银行")
 

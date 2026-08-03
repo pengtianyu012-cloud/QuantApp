@@ -10,6 +10,17 @@ from app.utils import FrozenClock
 
 
 class TradingAppServiceTests(unittest.TestCase):
+    def test_dashboard_quote_delay_uses_injected_current_time(self) -> None:
+        clock = FrozenClock(datetime(2030, 8, 6, 9, 30, tzinfo=APP_TIME_ZONE))
+        service = TradingAppService(persist_account=False, clock=clock)
+
+        initial = service.get_dashboard_metrics()
+        clock.advance(timedelta(seconds=31))
+        aged = service.get_dashboard_metrics()
+
+        self.assertEqual(initial["quote_delay"], "0秒")
+        self.assertEqual(aged["quote_delay"], "31秒")
+
     def test_manual_buy_updates_account_position_order_and_fill(self) -> None:
         clock = FrozenClock(datetime(2030, 8, 6, 9, 30, tzinfo=APP_TIME_ZONE))
         service = TradingAppService(persist_account=False, clock=clock)

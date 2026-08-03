@@ -95,15 +95,18 @@ class QuantMainWindow(QMainWindow):
         layout = page.layout()
         metrics = self.service.get_dashboard_metrics()
         cards = [
-            ("市场状态", metrics["market_status"], "基于Mock交易日历"),
+            ("市场状态", metrics["market_status"], "当前运行模式"),
             ("数据源连接", metrics["data_source"], metrics["data_status"]),
             ("行情延迟", metrics["quote_delay"], "按行情时间戳计算"),
             ("账户总资产", metrics["account_total"], "本地模拟账户"),
             ("可用现金", metrics["cash"], "账户实时状态"),
-            ("持仓市值", metrics["market_value"], "按Mock最新价估值"),
+            ("持仓市值", metrics["market_value"], "按当前行情估值"),
+            ("当前回撤", metrics["current_drawdown"], "相对历史净值峰值"),
+            ("最大回撤", metrics["max_drawdown"], "账户历史最大值"),
+            ("累计费用", metrics["cumulative_fees"], "含显式费用与价格影响"),
             ("账户存储", metrics["persistence_status"], "SQLite本地持久化"),
-            ("风控状态", metrics["risk_status"], "阶段3内核已接入"),
-            ("运行策略", metrics["running_strategy"], "策略阶段尚未接入"),
+            ("风控状态", metrics["risk_status"], "回撤达到15%暂停买入"),
+            ("运行策略", metrics["running_strategy"], self.service.market_data.name),
         ]
         grid = QGridLayout()
         grid.setSpacing(12)
@@ -114,7 +117,7 @@ class QuantMainWindow(QMainWindow):
             self.wrap_group(
                 "最近信号和订单",
                 self.create_table(
-                    ["时间", "类型", "策略", "代码", "方向", "状态", "说明"],
+                    self.order_headers(),
                     self.order_rows(limit=5),
                 ),
             )
@@ -233,7 +236,7 @@ class QuantMainWindow(QMainWindow):
                 result.strategy_name,
                 self.rules.benchmark,
                 self.format_pct(result.total_return),
-                "Mock骨架",
+                self.service.market_data.name,
                 "尚未计算",
                 f"成交{len(result.trades)}笔",
             ]
@@ -256,6 +259,9 @@ class QuantMainWindow(QMainWindow):
                     ("买入规则", f"普通A股{self.rules.buy_lot_size}股整数倍"),
                     ("T+1", "当日买入当日不可卖出"),
                     ("风控", "回撤15%暂停新增买入，仍允许卖出"),
+                    ("当前回撤", self.format_pct(self.service.account.current_drawdown)),
+                    ("最大回撤", self.format_pct(self.service.account.max_drawdown)),
+                    ("累计费用", self.format_money(self.service.account.cumulative_fees)),
                 ]
             )
         )
@@ -278,7 +284,7 @@ class QuantMainWindow(QMainWindow):
                 result.strategy_name,
                 self.rules.benchmark,
                 self.format_pct(result.total_return),
-                "Mock骨架",
+                self.service.market_data.name,
                 "尚未计算",
                 "尚未计算",
                 "尚未计算",
@@ -345,7 +351,9 @@ class QuantMainWindow(QMainWindow):
         log_view.setReadOnly(True)
         log_view.setMinimumHeight(130)
         log_view.setText(
-            "日志文件：logs/quant_app.log\nMock行情、账户、风控和撮合内核已接入UI服务层。\n诊断导出尚未实现，导出内容必须过滤Token、Cookie和敏感字段。"
+            f"日志文件：logs/quant_app.log\n当前行情源：{self.service.market_data.name}\n"
+            "账户、风控和撮合内核已接入UI服务层。\n"
+            "诊断导出尚未实现，导出内容必须过滤Token、Cookie和敏感字段。"
         )
         layout.addWidget(self.wrap_group("日志预览", log_view))
         return page
@@ -405,6 +413,7 @@ class QuantMainWindow(QMainWindow):
         result = self.service.place_manual_order(side, target_symbol, target_quantity, target_price)
         self.statusBar().showMessage(result.message)
         self.refresh_trading_tables()
+        self._update_dashboard_metrics()
         self.refresh_quote_table()
         return result
 
@@ -460,6 +469,9 @@ class QuantMainWindow(QMainWindow):
             "账户总资产": metrics["account_total"],
             "可用现金": metrics["cash"],
             "持仓市值": metrics["market_value"],
+            "当前回撤": metrics["current_drawdown"],
+            "最大回撤": metrics["max_drawdown"],
+            "累计费用": metrics["cumulative_fees"],
             "账户存储": metrics["persistence_status"],
             "风控状态": metrics["risk_status"],
             "运行策略": metrics["running_strategy"],
@@ -488,7 +500,9 @@ class QuantMainWindow(QMainWindow):
 
     def generate_signal_preview(self) -> None:
         signals = self.service.strategy_service.run_daily_signals(["000001.SZ", "300750.SZ"])
-        self.statusBar().showMessage(f"已生成{len(signals)}条Mock策略信号")
+        self.statusBar().showMessage(
+            f"已使用{self.service.market_data.name}生成{len(signals)}条策略信号"
+        )
         if hasattr(self, "selection_table"):
             self.set_table_rows(self.selection_table, self.selection_rows())
             self.selection_table.selectRow(0)
@@ -504,13 +518,13 @@ class QuantMainWindow(QMainWindow):
     def selection_rows(self) -> list[list[str]]:
         signals = self.service.strategy_service.latest_signals
         if not signals:
-            return [["尚未实现", "-", "-", "-", "点击策略中心生成Mock信号", "-", "-", "-"]]
+            return [["尚无信号", "-", "-", "-", "点击策略中心生成信号", "-", "-", "-"]]
         name_map = {quote.symbol: quote.name for quote in self.service.get_watchlist_quotes()}
         return [
             [
                 signal.strategy_name,
                 signal.symbol,
-                name_map.get(signal.symbol, "Mock股票"),
+                name_map.get(signal.symbol, signal.symbol),
                 str(signal.strength),
                 signal.reason,
                 signal.signal_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -639,34 +653,94 @@ class QuantMainWindow(QMainWindow):
         return rows
 
     def order_headers(self) -> list[str]:
-        return ["订单号", "代码", "方向", "数量", "限价", "状态", "说明"]
+        return [
+            "订单号",
+            "代码",
+            "方向",
+            "类型",
+            "数量",
+            "已成交",
+            "剩余",
+            "限价",
+            "状态",
+            "提交时间",
+            "可撮合时间",
+            "说明",
+        ]
 
     def order_rows(self, limit: int | None = None) -> list[list[str]]:
         orders = self.service.account.orders[-limit:] if limit else self.service.account.orders
         if not orders:
-            return [["-", "-", "-", "-", "-", "尚无订单", "-"]]
+            return [["-", "-", "-", "-", "0", "0", "0", "-", "尚无订单", "-", "-", "-"]]
         return [
             [
                 order.order_id,
                 order.symbol,
                 order.side.value,
+                order.order_type.value,
                 str(order.quantity),
+                str(order.filled_quantity),
+                str(order.remaining_quantity),
                 str(order.limit_price or "市价"),
                 order.status.value,
+                order.submitted_at.strftime("%Y-%m-%d %H:%M:%S"),
+                order.eligible_at.strftime("%Y-%m-%d %H:%M:%S")
+                if order.eligible_at is not None
+                else "-",
                 order.reason,
             ]
             for order in reversed(orders)
         ]
 
     def fill_headers(self) -> list[str]:
-        return ["成交号", "订单号", "代码", "方向", "数量", "价格", "费用", "说明"]
+        return [
+            "成交号",
+            "订单号",
+            "代码",
+            "方向",
+            "数量",
+            "参考价",
+            "成交价",
+            "佣金",
+            "印花税",
+            "过户费",
+            "滑点",
+            "市场冲击",
+            "总成本",
+            "成交时间",
+            "说明",
+        ]
 
     def fill_rows(self) -> list[list[str]]:
         if not self.service.account.fills:
-            return [["-", "-", "-", "-", "0", "-", "¥0.00", "-"]]
+            return [
+                [
+                    "-",
+                    "-",
+                    "-",
+                    "-",
+                    "0",
+                    "-",
+                    "-",
+                    "¥0.00",
+                    "¥0.00",
+                    "¥0.00",
+                    "¥0.00",
+                    "¥0.00",
+                    "¥0.00",
+                    "-",
+                    "-",
+                ]
+            ]
         rows: list[list[str]] = []
         for fill in reversed(self.service.account.fills):
-            fee = fill.commission + fill.tax + fill.transfer_fee + fill.slippage
+            total_cost = (
+                fill.commission
+                + fill.tax
+                + fill.transfer_fee
+                + fill.slippage
+                + fill.market_impact
+            )
             rows.append(
                 [
                     fill.fill_id,
@@ -674,8 +748,15 @@ class QuantMainWindow(QMainWindow):
                     fill.symbol,
                     fill.side.value,
                     str(fill.quantity),
+                    str(fill.reference_price or fill.price),
                     str(fill.price),
-                    self.format_money(fee),
+                    self.format_money(fill.commission),
+                    self.format_money(fill.tax),
+                    self.format_money(fill.transfer_fee),
+                    self.format_money(fill.slippage),
+                    self.format_money(fill.market_impact),
+                    self.format_money(total_cost),
+                    fill.filled_at.strftime("%Y-%m-%d %H:%M:%S"),
                     "降级撮合" if fill.degraded_model else "正常撮合",
                 ]
             )
@@ -743,7 +824,12 @@ class QuantMainWindow(QMainWindow):
         table.setAlternatingRowColors(True)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        resize_mode = (
+            QHeaderView.ResizeMode.ResizeToContents
+            if len(headers) > 10
+            else QHeaderView.ResizeMode.Stretch
+        )
+        table.horizontalHeader().setSectionResizeMode(resize_mode)
         self.set_table_rows(table, rows)
         return table
 

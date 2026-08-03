@@ -10,7 +10,7 @@
 
 ## 真实接口实测
 
-实测日期：2026-07-27。环境：Windows 11、Python 3.13.2、AkShare 1.18.79。
+历史人工验收环境：Windows 11、Python 3.13.2、AkShare 1.18.79。该记录不作为运行时固定日期或可用性承诺。
 
 | 能力 | 来源 | 实测结果 | 字段与单位 |
 | --- | --- | --- | --- |
@@ -39,12 +39,14 @@
 
 ## 启用方式
 
-默认使用 Mock。PowerShell 中启用真实研究数据源：
+默认使用 mock 模式。PowerShell 中启用真实研究数据源：
 
 ```powershell
-$env:QUANT_APP_DATA_PROVIDER = "public"
+$env:QUANT_APP_MODE = "research"
 .\.venv\Scripts\python.exe main.py
 ```
+
+research 只允许研究与回测；需要真实公开行情本地模拟盘时使用 QUANT_APP_MODE=paper。两种真实模式都禁止隐式回退 Mock。旧的 QUANT_APP_DATA_PROVIDER=public 仅保留为 research 兼容映射，不建议继续用于新配置。
 
 运行可选真实网络测试：
 

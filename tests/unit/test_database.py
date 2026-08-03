@@ -44,7 +44,7 @@ class DatabaseTests(unittest.TestCase):
             )
             connection.execute(
                 "INSERT INTO schema_migrations(version, applied_at) "
-                "VALUES (1, '2026-07-27T00:00:00+00:00')"
+                "VALUES (1, '2030-08-06T00:00:00+00:00')"
             )
             connection.execute(
                 """
