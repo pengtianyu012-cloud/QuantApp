@@ -19,7 +19,12 @@ from app.data.providers import (
     ProviderHealth,
     Quote,
 )
-from app.database import AccountRepository, AccountRepositoryError
+from app.database import (
+    AccountRepository,
+    AccountRepositoryError,
+    SignalRepository,
+    SignalRepositoryError,
+)
 from app.execution import (
     ProviderTradingCalendar,
     SimulatedMatcher,
@@ -29,8 +34,13 @@ from app.execution import (
 from app.models import Fill, Order, OrderSide, OrderStatus, OrderType, PortfolioSnapshot
 from app.portfolio import AccountError, SimulatedAccount
 from app.risk import RiskManager
+from app.services.close_signal_orchestrator import (
+    CloseSignalCycleResult,
+    CloseSignalOrchestrationError,
+    CloseSignalOrchestrator,
+)
 from app.services.strategy_service import StrategyService
-from app.strategies import MovingAverageTrendStrategy
+from app.strategies import MovingAverageTrendStrategy, StrategySignal
 from app.utils.clock import Clock, SystemClock
 
 
@@ -49,6 +59,7 @@ class TradingAppService:
         self,
         market_data: MarketDataProvider | None = None,
         account_repository: AccountRepository | None = None,
+        signal_repository: SignalRepository | None = None,
         db_path: Path | None = None,
         persist_account: bool = True,
         background_market_data: bool | None = None,
@@ -105,6 +116,24 @@ class TradingAppService:
         self.risk = RiskManager()
         self.matcher = SimulatedMatcher(self.trading_calendar)
         self.strategy_service = StrategyService(self.market_data, self.clock)
+        self.signal_repository = signal_repository
+        if self.signal_repository is None and self.account_repository is not None:
+            try:
+                self.signal_repository = SignalRepository(self.account_repository.db_path)
+            except SignalRepositoryError as exc:
+                self.persistence_error = str(exc)
+        self.close_signal_orchestrator = (
+            CloseSignalOrchestrator(
+                mode=self.mode,
+                market_data=self.market_data,
+                account_repository=self.account_repository,
+                signal_repository=self.signal_repository,
+                trading_calendar=self.trading_calendar,
+                risk_manager=self.risk,
+            )
+            if self.account_repository is not None and self.signal_repository is not None
+            else None
+        )
         self.watchlist = ["600519.SH", "000001.SZ", "300750.SZ", "688001.SH"]
 
     def get_dashboard_metrics(self) -> dict[str, str]:
@@ -246,9 +275,7 @@ class TradingAppService:
             eligible_at = None
             if selected_order_type is OrderType.NEXT_OPEN:
                 next_open_date = self.trading_calendar.next_trading_day(now.date())
-                eligible_at = datetime.combine(
-                    next_open_date, time(9, 30), tzinfo=APP_TIME_ZONE
-                )
+                eligible_at = datetime.combine(next_open_date, time(9, 30), tzinfo=APP_TIME_ZONE)
             order = working_account.submit_order(
                 symbol,
                 side,
@@ -320,11 +347,7 @@ class TradingAppService:
             if order.status.is_terminal:
                 return ManualOrderResult(False, order, None, "终态订单不可再次撮合")
             quote = next(
-                (
-                    item
-                    for item in self.get_watchlist_quotes()
-                    if item.symbol == order.symbol
-                ),
+                (item for item in self.get_watchlist_quotes() if item.symbol == order.symbol),
                 None,
             )
             if quote is None:
@@ -396,6 +419,33 @@ class TradingAppService:
         working_account.advance_trading_day()
         self._commit_account(working_account)
 
+    def run_close_signal_cycle(
+        self,
+        symbols: list[str] | None = None,
+        current_time: datetime | None = None,
+    ) -> CloseSignalCycleResult:
+        now = current_time or self.clock.now()
+        orchestrator = self._require_close_signal_orchestrator()
+        orchestrator.validate_close_session(now)
+        signals = self.strategy_service.run_daily_signals(symbols)
+        return self.dispatch_close_signals(signals, now)
+
+    def dispatch_close_signals(
+        self,
+        signals: list[StrategySignal],
+        current_time: datetime | None = None,
+    ) -> CloseSignalCycleResult:
+        now = current_time or self.clock.now()
+        orchestrator = self._require_close_signal_orchestrator()
+        with self._account_lock:
+            result = orchestrator.run(signals, self.account, now)
+            if result.account_saved and self.account_repository is not None:
+                restored = self.account_repository.load(self.account.account_id)
+                if restored is None:
+                    raise CloseSignalOrchestrationError("收盘任务保存后无法恢复模拟账户")
+                self.account = restored
+        return result
+
     def record_portfolio_snapshot(
         self,
         snapshot_time: datetime | None = None,
@@ -423,6 +473,12 @@ class TradingAppService:
             if instrument.symbol == symbol:
                 return instrument
         raise ValueError(f"未知股票代码：{symbol}")
+
+    def _require_close_signal_orchestrator(self) -> CloseSignalOrchestrator:
+        if self.close_signal_orchestrator is None:
+            message = self.persistence_error or "信号或账户数据库不可用"
+            raise CloseSignalOrchestrationError(message)
+        return self.close_signal_orchestrator
 
     def _commit_account(self, account: SimulatedAccount) -> None:
         with self._account_lock:

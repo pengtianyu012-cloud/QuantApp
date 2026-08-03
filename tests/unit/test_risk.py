@@ -65,6 +65,36 @@ class RiskManagerTests(unittest.TestCase):
         self.assertFalse(buy_result.passed)
         self.assertTrue(sell_result.passed)
 
+    def test_pending_buy_reservations_count_toward_exposure_limits(self) -> None:
+        account = SimulatedAccount()
+        manager = RiskManager()
+
+        position_result = manager.check_order(
+            OrderSide.BUY,
+            account,
+            "000001.SZ",
+            Decimal("16000"),
+            {},
+            {"000001.SZ": Decimal("15000")},
+        )
+        cash_result = manager.check_order(
+            OrderSide.BUY,
+            account,
+            "300750.SZ",
+            Decimal("20000"),
+            {},
+            {
+                "000001.SZ": Decimal("29000"),
+                "600519.SH": Decimal("29000"),
+                "688001.SH": Decimal("29000"),
+            },
+        )
+
+        self.assertFalse(position_result.passed)
+        self.assertIn("单股", position_result.message)
+        self.assertFalse(cash_result.passed)
+        self.assertIn("总仓位", cash_result.message)
+
 
 if __name__ == "__main__":
     unittest.main()

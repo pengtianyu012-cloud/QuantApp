@@ -11,7 +11,7 @@
 - `app/ui/main_window.py` PySide6 主窗口和 10 个服务接线页面
 - `app/ui/background_task.py` Qt 线程池后台行情任务
 - `app/data/providers` 统一行情接口、Mock、主备降级和真实公开研究数据源
-- `app/database` SQLite v3 版本迁移、追加式订单/成交审计和模拟账户事务仓储
+- `app/database` SQLite v4 版本迁移、追加式信号/订单/成交审计和模拟账户事务仓储
 - `app/execution` A股规则、交易日历、订单状态机、统一成本与模拟撮合
 - `app/risk` 单股、总仓位、现金与最大回撤风控
 - `app/portfolio` 账户、持仓、订单、成交、每日净值快照与回撤模型
@@ -19,6 +19,7 @@
 - `app/backtest` T 日信号、T+1 开盘成交的日线回测骨架
 - `app/services/startup.py` 运行目录和依赖探查
 - `app/services/trading_app_service.py` UI 与业务内核的应用服务
+- `app/services/close_signal_orchestrator.py` 收盘信号持久化、目标仓位换算与幂等 NEXT_OPEN 订单编排
 - `app/utils/logging.py` 滚动日志初始化
 
 关键边界：
@@ -29,6 +30,8 @@
 - 真实行情网络请求由 `QThreadPool` 执行，Qt 主线程只读取线程安全快照。
 - 真实源失败时保留最后已验证快照，不使用 Mock 价格冒充真实行情。
 - 账户当前状态在单个 SQLite 事务中保存，写入成功后才提交内存状态；订单事件和成交历史只追加。
+- 收盘编排先追加信号，再保存信号关联订单，最后确认派发状态；中断后以 pending 信号和账户中的 signal_id 关联订单对账恢复。
+- 未完成买单按当前收盘价或限价计入单股、总仓位和现金预留；真实当前回撤仍是新增买入的硬约束。
 - 滑点与市场冲击进入成交价，佣金、印花税和过户费作为现金费用扣除，所有成本在 Fill 中可核对。
 - 源码模式运行数据位于项目目录；冻结版位于 `%LOCALAPPDATA%/QuantApp`。
 - 回测、真实分时和财务披露时点仍是后续扩展边界，详见 `BACKTEST_ASSUMPTIONS.md` 和 `DATA_SOURCES.md`。

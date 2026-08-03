@@ -126,7 +126,7 @@
 
 ## 当前阶段
 
-本地机构化改造 Phase 1A 已完成；当前下一阶段为 Phase 1B 收盘信号到下一交易日 NEXT_OPEN 订单编排。
+本地机构化改造 Phase 1B 已完成；当前下一阶段为 Phase 1C 开盘续撮、取消/过期策略与每日自动对账。
 
 ## GitHub 仓库连接
 
@@ -286,7 +286,34 @@
 - 模拟账户支持注入确定性 order_id 和 signal_id，并在内存层拒绝重复订单或重复信号关联。
 - v3 到 v4 迁移保留旧信号和订单数据，补充默认派发状态并在迁移后建立索引。
 
+### Phase 1B：收盘信号到下一交易日 NEXT_OPEN 订单编排
+
+- 新增 CloseSignalOrchestrator，只允许在交易日 15:00 后运行收盘编排，并拒绝跨日、未来时点和错过计划开盘的信号。
+- 收盘任务先追加持久化信号，再保存账户及 signal_id 关联订单，最后确认派发状态；账户保存失败时信号保持 pending。
+- 应用重启或状态确认中断后，会用账户中已有的 signal_id 订单修复信号状态，不重复创建订单。
+- 买入按建议组合目标仓位减去当前持仓和未完成买单预留计算，向下取整到 100 股；预留同时进入单股、总仓位和现金风控。
+- 卖出目标按账户总资产计算并允许零股；真实当前回撤达到 15% 时买入被拒绝，卖出仍可创建 NEXT_OPEN 订单。
+- research 模式只保存研究信号并标记跳过派单；mock 和 paper 模式才允许创建本地模拟订单。
+- TradingAppService 新增收盘策略运行和显式信号派发入口；派发完成后从 SQLite 恢复账户，保证内存与数据库一致。
+- README、架构、交易规则、用户指南和 v3 到 v4 迁移说明已同步；桌面自动定时触发、开盘批量续撮和取消/过期明确留到 Phase 1C。
+
 ## 修改的文件
+
+### Phase 1B
+
+- DEVELOPMENT_STATUS.md
+- README.md
+- app/risk/checks.py
+- app/services/__init__.py
+- app/services/close_signal_orchestrator.py
+- app/services/trading_app_service.py
+- docs/ARCHITECTURE.md
+- docs/MIGRATION_PHASE1.md
+- docs/TRADING_RULES.md
+- docs/USER_GUIDE.md
+- tests/unit/test_close_signal_orchestrator.py
+- tests/unit/test_risk.py
+- tests/unit/test_trading_app_service.py
 
 ### Phase 1A
 
@@ -416,6 +443,15 @@
 
 ## 测试结果
 
+Phase 1B 已执行：
+
+- .\.venv\Scripts\python.exe -m pytest：通过，103 个测试通过，2 个真实网络测试默认跳过，2 个子测试通过。
+- .\.venv\Scripts\python.exe -m ruff check .：通过，All checks passed!。
+- .\.venv\Scripts\python.exe -m ruff format --check Phase 1B Python 文件：通过。
+- .\.venv\Scripts\python.exe -m compileall -q app main.py tests：通过。
+- PySide6 offscreen 启动：窗口可见，标题正确，10 个页面成功构造。
+- 收盘/交易日门禁、目标仓位、未完成买单预留、research 只落账、15% 回撤买卖分流、重复执行、重启对账和写盘失败重试测试：通过。
+
 Phase 1A 已执行：
 
 - .\.venv\Scripts\python.exe -m pytest：通过，91 个测试通过，2 个真实网络测试默认跳过，2 个子测试通过。
@@ -483,8 +519,9 @@ Phase 0A 已执行：
 
 ## 当前失败项
 
+- Phase 1B 无阻断失败项。
+- Phase 1C 尚未实现：桌面端不会自动在收盘触发任务，也不会在开盘批量续撮、执行取消/过期策略或生成每日自动对账报告。
 - Phase 1A 无阻断失败项。
-- Phase 1B 尚未实现：当前信号账本不会自动执行收盘时点校验、目标仓位换算或创建 NEXT_OPEN 订单。
 - 本地机构化改造 Phase 0 无阻断失败项。
 - 本轮未重新执行真实网络集成测试；2 个真实网络测试按默认配置跳过，固定响应和 provider 注入测试已通过。
 - 本轮未重新执行 PyInstaller 打包；当前源码桌面版 offscreen 启动通过，上一稳定阶段的 Windows 打包曾通过。
@@ -497,12 +534,12 @@ Phase 0A 已执行：
 
 ## 下一步准确任务
 
-1. 实现 CloseSignalOrchestrator：只接受交易日 15:00 后的收盘信号，先追加持久化，再为下一交易日 09:30 创建 NEXT_OPEN 订单。
-2. 按 suggested_position_pct、当前持仓、未完成买单和可用现金计算 100 股整数倍订单；达到真实 15% 回撤时禁止新增买入但允许卖出。
-3. 使用 signal_id 和确定性 order_id 保证重复点击、任务重跑和应用重启均不重复创建订单，并恢复 pending 信号。
-4. research 模式只持久化研究信号并标记不可派单；paper/mock 模式允许创建本地模拟订单，所有模式禁止隐式 Mock。
-5. 为交易日/收盘时点、目标仓位、组合预留风险、幂等恢复和数据库失败后重试补充测试；稳定后更新本文件并提交 Phase 1B。
+1. 实现 LocalTradingDayScheduler，使用注入 Clock 和 TradingCalendar 保证每个交易日收盘任务最多执行一次，并持久化任务运行状态供重启恢复。
+2. 实现开盘批量执行入口：先推进 T+1 可卖数量，再按每个订单的股票读取当日新鲜行情，续撮 PENDING_NEXT_OPEN、DEFERRED 和 PARTIALLY_FILLED 订单。
+3. 定义并测试取消与过期策略：停牌、涨跌停和限价不满足按规则顺延；用户取消立即终止；超过明确交易日上限后 EXPIRED，终态不得复活。
+4. 新增每日自动对账报告，核对期初现金、成交现金流、费用、期末现金、持仓市值、总资产、订单剩余量和信号关联完整性。
+5. 将任务状态和最近执行结果接入 PySide6 桌面诊断/策略页面，网络与批量撮合继续在后台线程运行；稳定后提交 Phase 1C。
 
 ## 下一条恢复命令或任务
 
-从 feat/local-correctness-core 执行 git status --short --branch、git log -5 --oneline、.\.venv\Scripts\python.exe -m pytest；确认 Phase 1A 信号账本提交存在且工作区干净后，从 CloseSignalOrchestrator 的收盘时点校验和幂等 NEXT_OPEN 订单创建开始 Phase 1B。
+从 feat/local-correctness-core 执行 git status --short --branch、git log -5 --oneline、.\.venv\Scripts\python.exe -m pytest；确认 Phase 1B 收盘 NEXT_OPEN 编排提交存在且工作区干净后，从 LocalTradingDayScheduler 的任务运行状态持久化和开盘批量续撮入口开始 Phase 1C。

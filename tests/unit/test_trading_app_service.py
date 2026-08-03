@@ -1,11 +1,16 @@
 import unittest
 from datetime import datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from app.config import APP_TIME_ZONE
 from app.data.providers import MockMarketDataProvider
+from app.database import AccountRepository, SignalRepository
 from app.models import OrderSide, OrderStatus, OrderType
-from app.services import TradingAppService
+from app.services import CloseSignalOrchestrationError, TradingAppService
+from app.strategies import SignalDirection, StrategySignal
 from app.utils import FrozenClock
 
 
@@ -109,6 +114,49 @@ class TradingAppServiceTests(unittest.TestCase):
         self.assertTrue(filled.ok)
         self.assertIsNotNone(filled.fill)
         self.assertEqual(filled.order.status, OrderStatus.FILLED)
+
+    def test_close_cycle_validates_time_before_running_strategies(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            clock = FrozenClock(datetime(2030, 8, 6, 14, 59, tzinfo=APP_TIME_ZONE))
+            db_path = Path(temp_dir) / "service-close.sqlite3"
+            service = TradingAppService(
+                account_repository=AccountRepository(db_path),
+                signal_repository=SignalRepository(db_path),
+                clock=clock,
+            )
+
+            with patch.object(
+                service.strategy_service,
+                "run_daily_signals",
+                side_effect=AssertionError("收盘前不应运行策略"),
+            ):
+                with self.assertRaises(CloseSignalOrchestrationError):
+                    service.run_close_signal_cycle(["000001.SZ"])
+
+    def test_dispatch_close_signals_refreshes_service_account_from_database(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            now = datetime(2030, 8, 6, 15, 30, tzinfo=APP_TIME_ZONE)
+            clock = FrozenClock(now)
+            db_path = Path(temp_dir) / "service-dispatch.sqlite3"
+            service = TradingAppService(db_path=db_path, clock=clock)
+            signal = StrategySignal(
+                signal_time=now.replace(hour=15, minute=0),
+                market_time=now.replace(hour=15, minute=0),
+                source=service.market_data.name,
+                symbol="000001.SZ",
+                direction=SignalDirection.BUY,
+                strength=Decimal("0.8"),
+                strategy_name="均线趋势",
+                reason="服务层收盘派发测试",
+                suggested_position_pct=Decimal("0.20"),
+            )
+
+            result = service.dispatch_close_signals([signal])
+
+            self.assertEqual(result.orders_created_count, 1)
+            self.assertEqual(len(service.account.orders), 1)
+            self.assertEqual(service.account.orders[0].status, OrderStatus.PENDING_NEXT_OPEN)
+            self.assertIsNotNone(service.account.orders[0].signal_id)
 
 
 if __name__ == "__main__":

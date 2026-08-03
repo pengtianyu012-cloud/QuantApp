@@ -32,24 +32,38 @@ class RiskManager:
         symbol: str,
         order_value: Decimal,
         latest_prices: dict[str, Decimal],
+        reserved_buy_values: dict[str, Decimal] | None = None,
     ) -> RiskResult:
         if account.current_drawdown >= self.limits.max_drawdown_pct:
             return RiskResult(False, "最大回撤达到15%，暂停新增买入")
         total_assets = account.total_assets(latest_prices)
         if total_assets <= Decimal("0"):
             return RiskResult(False, "账户总资产必须大于0")
+        reserved_values = reserved_buy_values or {}
+        reserved_symbol_value = max(
+            reserved_values.get(symbol, Decimal("0")),
+            Decimal("0"),
+        )
+        reserved_total_value = sum(
+            (max(value, Decimal("0")) for value in reserved_values.values()),
+            Decimal("0"),
+        )
         current_symbol_value = Decimal("0")
         if symbol in account.positions:
             price = latest_prices.get(symbol, account.positions[symbol].cost_price)
             current_symbol_value = account.positions[symbol].market_value(price)
-        after_symbol_pct = (current_symbol_value + order_value) / total_assets
+        after_symbol_pct = (
+            current_symbol_value + reserved_symbol_value + order_value
+        ) / total_assets
         if after_symbol_pct > self.limits.max_single_position_pct:
             return RiskResult(False, "单股仓位超过30%限制")
 
-        total_position_value = account.market_value(latest_prices) + order_value
+        total_position_value = (
+            account.market_value(latest_prices) + reserved_total_value + order_value
+        )
         if total_position_value / total_assets > self.limits.max_total_position_pct:
             return RiskResult(False, "总仓位超过90%限制")
-        if order_value > account.cash:
+        if reserved_total_value + order_value > account.cash:
             return RiskResult(False, "可用现金不足")
         return RiskResult(True, "风控通过")
 
@@ -60,7 +74,14 @@ class RiskManager:
         symbol: str,
         order_value: Decimal,
         latest_prices: dict[str, Decimal],
+        reserved_buy_values: dict[str, Decimal] | None = None,
     ) -> RiskResult:
         if side is OrderSide.SELL:
             return RiskResult(True, "卖出不受新增买入风控暂停限制")
-        return self.check_buy_order(account, symbol, order_value, latest_prices)
+        return self.check_buy_order(
+            account,
+            symbol,
+            order_value,
+            latest_prices,
+            reserved_buy_values,
+        )
