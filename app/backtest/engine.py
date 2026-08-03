@@ -59,7 +59,14 @@ class DailyBacktestEngine:
         trades: list[BacktestTrade] = []
         if len(bars) < 2:
             return BacktestResult(
-                strategy.name, symbol, start_date, end_date, cash, position_quantity, tuple()
+                strategy.name,
+                symbol,
+                start_date,
+                end_date,
+                initial_cash,
+                cash,
+                position_quantity,
+                tuple(),
             )
 
         for index in range(1, len(bars) - 1):

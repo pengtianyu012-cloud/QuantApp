@@ -6,7 +6,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from app.config import APP_TIME_ZONE, TradingRules
+from app.config import TradingRules
+from app.utils.clock import SystemClock
 
 
 class MarketDataError(RuntimeError):
@@ -38,7 +39,10 @@ class Instrument:
 
     @property
     def eligible(self) -> bool:
-        listing_days = (datetime.now(APP_TIME_ZONE).date() - self.listed_date).days
+        return self.is_eligible()
+
+    def is_eligible(self, as_of: date | None = None) -> bool:
+        listing_days = ((as_of or SystemClock().today()) - self.listed_date).days
         return not (
             self.is_st
             or self.is_delisting

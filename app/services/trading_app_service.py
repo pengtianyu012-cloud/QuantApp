@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -9,7 +8,7 @@ from pathlib import Path
 from threading import RLock
 
 from app.backtest import BacktestResult, DailyBacktestEngine
-from app.config import APP_TIME_ZONE
+from app.config import RuntimeMode, TradingRules, resolve_runtime_mode
 from app.data.providers import (
     AkSharePublicMarketDataProvider,
     Instrument,
@@ -21,12 +20,18 @@ from app.data.providers import (
     Quote,
 )
 from app.database import AccountRepository, AccountRepositoryError
-from app.execution import SimulatedMatcher, identify_security
+from app.execution import (
+    ProviderTradingCalendar,
+    SimulatedMatcher,
+    TradingCalendar,
+    identify_security,
+)
 from app.models import Fill, Order, OrderSide, OrderStatus
 from app.portfolio import AccountError, SimulatedAccount
 from app.risk import RiskManager
 from app.services.strategy_service import StrategyService
 from app.strategies import MovingAverageTrendStrategy
+from app.utils.clock import Clock, SystemClock
 
 
 @dataclass(frozen=True)
@@ -47,12 +52,28 @@ class TradingAppService:
         db_path: Path | None = None,
         persist_account: bool = True,
         background_market_data: bool | None = None,
+        mode: RuntimeMode | str | None = None,
+        clock: Clock | None = None,
+        trading_calendar: TradingCalendar | None = None,
     ) -> None:
-        self.market_data = market_data or build_default_market_data_provider()
+        if mode is None and market_data is not None:
+            mode = (
+                RuntimeMode.MOCK
+                if isinstance(market_data, MockMarketDataProvider)
+                else RuntimeMode.RESEARCH
+            )
+        self.mode = resolve_runtime_mode(mode)
+        self.clock = clock or SystemClock()
+        self.market_data = market_data or build_default_market_data_provider(self.mode, self.clock)
+        if self.mode.requires_real_market_data and isinstance(
+            self.market_data, MockMarketDataProvider
+        ):
+            raise ValueError(f"{self.mode.value} 模式禁止使用 MockMarketDataProvider")
+        self.trading_calendar = trading_calendar or ProviderTradingCalendar(self.market_data)
         self.background_market_data = (
             background_market_data
             if background_market_data is not None
-            else not isinstance(self.market_data, MockMarketDataProvider)
+            else self.mode.requires_real_market_data
         )
         self._market_lock = RLock()
         self._quote_snapshot: list[Quote] = []
@@ -82,10 +103,7 @@ class TradingAppService:
                 self.account_repository = None
         self.risk = RiskManager()
         self.matcher = SimulatedMatcher()
-        strategy_provider = (
-            MockMarketDataProvider() if self.background_market_data else self.market_data
-        )
-        self.strategy_service = StrategyService(strategy_provider)
+        self.strategy_service = StrategyService(self.market_data, self.clock)
         self.watchlist = ["600519.SH", "000001.SZ", "300750.SZ", "688001.SH"]
 
     def get_dashboard_metrics(self) -> dict[str, str]:
@@ -94,7 +112,11 @@ class TradingAppService:
         health = self.provider_health()
         quote_delay = max((quote.delay_seconds for quote in quotes), default=None)
         return {
-            "market_status": "真实行情研究模式" if self.background_market_data else "交易日Mock",
+            "market_status": {
+                RuntimeMode.MOCK: "Mock离线模式",
+                RuntimeMode.RESEARCH: "真实行情研究模式",
+                RuntimeMode.PAPER: "真实行情模拟盘模式",
+            }[self.mode],
             "data_source": self.market_data.name,
             "data_status": (
                 "等待后台连接" if health is None else ("正常" if health.ok else "异常")
@@ -149,7 +171,7 @@ class TradingAppService:
                 provider=self.market_data.name,
                 ok=False,
                 message=message,
-                checked_at=datetime.now(APP_TIME_ZONE),
+                checked_at=self.clock.now(),
             )
 
     def provider_health(self) -> ProviderHealth | None:
@@ -177,7 +199,10 @@ class TradingAppService:
             message = self.persistence_error or "账户数据库不可用"
             return ManualOrderResult(False, None, None, message)
 
-        now = current_time or datetime.now(APP_TIME_ZONE)
+        if not self.mode.allows_manual_orders:
+            return ManualOrderResult(False, None, None, "research 模式仅用于研究，禁止手工下单")
+
+        now = current_time or self.clock.now()
         working_account = deepcopy(self.account)
         order: Order | None = None
         try:
@@ -255,10 +280,11 @@ class TradingAppService:
         self._commit_account(working_account)
 
     def run_demo_backtest(self) -> BacktestResult:
-        provider = MockMarketDataProvider() if self.background_market_data else self.market_data
-        engine = DailyBacktestEngine(provider)
+        engine = DailyBacktestEngine(self.market_data)
         strategy = MovingAverageTrendStrategy({"short_window": 3, "long_window": 5})
-        return engine.run(strategy, "000001.SZ", date(2026, 4, 1), date(2026, 7, 27))
+        end_date = self.clock.today()
+        start_date = _years_before(end_date, TradingRules().backtest_years)
+        return engine.run(strategy, "000001.SZ", start_date, end_date)
 
     def _find_instrument(self, symbol: str) -> Instrument:
         for instrument in self.market_data.get_stock_list():
@@ -276,8 +302,18 @@ def format_money(value: Decimal) -> str:
     return f"¥{value:,.2f}"
 
 
-def build_default_market_data_provider() -> MarketDataProvider:
-    provider_name = os.environ.get("QUANT_APP_DATA_PROVIDER", "mock").strip().lower()
-    if provider_name in {"public", "akshare", "real"}:
+def build_default_market_data_provider(
+    mode: RuntimeMode | str | None = None,
+    clock: Clock | None = None,
+) -> MarketDataProvider:
+    selected_mode = resolve_runtime_mode(mode)
+    if selected_mode.requires_real_market_data:
         return AkSharePublicMarketDataProvider()
-    return MockMarketDataProvider()
+    return MockMarketDataProvider(clock=clock)
+
+
+def _years_before(value: date, years: int) -> date:
+    try:
+        return value.replace(year=value.year - years)
+    except ValueError:
+        return value.replace(year=value.year - years, day=28)

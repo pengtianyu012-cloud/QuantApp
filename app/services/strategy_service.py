@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import timedelta
 
 from app.data.providers import MarketDataProvider
 from app.strategies import (
@@ -12,6 +12,7 @@ from app.strategies import (
     StrategyState,
     create_builtin_strategies,
 )
+from app.utils.clock import Clock, SystemClock
 
 
 class StrategyServiceError(RuntimeError):
@@ -27,8 +28,9 @@ class StrategyStatus:
 
 
 class StrategyService:
-    def __init__(self, market_data: MarketDataProvider) -> None:
+    def __init__(self, market_data: MarketDataProvider, clock: Clock | None = None) -> None:
         self.market_data = market_data
+        self.clock = clock or SystemClock()
         self.strategies = create_builtin_strategies()
         self.latest_signals: list[StrategySignal] = []
 
@@ -67,10 +69,10 @@ class StrategyService:
         selected_symbols = symbols or [
             instrument.symbol
             for instrument in self.market_data.get_stock_list()
-            if instrument.eligible
+            if instrument.is_eligible(self.clock.today())
         ]
         signals: list[StrategySignal] = []
-        end_date = date(2026, 7, 27)
+        end_date = self.clock.today()
         start_date = end_date - timedelta(days=90)
         for symbol in selected_symbols:
             bars = self.market_data.get_daily_bars(symbol, start_date, end_date)

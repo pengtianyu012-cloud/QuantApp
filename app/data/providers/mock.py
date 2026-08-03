@@ -17,6 +17,7 @@ from app.data.providers.base import (
     Quote,
     TradingDay,
 )
+from app.utils.clock import Clock, SystemClock
 
 
 class MockMarketDataProvider(MarketDataProvider):
@@ -24,10 +25,10 @@ class MockMarketDataProvider(MarketDataProvider):
 
     name = "Mock行情"
 
-    def __init__(self, fail: bool = False) -> None:
+    def __init__(self, fail: bool = False, clock: Clock | None = None) -> None:
         self.fail = fail
+        self.clock = clock or SystemClock()
         self.quote_cache: TtlMemoryCache[list[Quote]] = TtlMemoryCache(ttl_seconds=3)
-        self._now = datetime(2026, 7, 27, 10, 0, tzinfo=APP_TIME_ZONE)
         self._instruments = [
             Instrument(
                 symbol="600519.SH",
@@ -122,7 +123,7 @@ class MockMarketDataProvider(MarketDataProvider):
         self._raise_if_failed()
         if interval not in {"1m", "5m", "15m"}:
             raise MarketDataError(f"Mock数据源不支持分时周期：{interval}")
-        start = datetime.combine(self._now.date(), time(9, 30), tzinfo=APP_TIME_ZONE)
+        start = datetime.combine(self.clock.today(), time(9, 30), tzinfo=APP_TIME_ZONE)
         return [
             self._build_bar(symbol, start + timedelta(minutes=index), index) for index in range(8)
         ]
@@ -183,7 +184,7 @@ class MockMarketDataProvider(MarketDataProvider):
             provider=self.name,
             ok=not self.fail,
             message="Mock数据源可用" if not self.fail else "Mock数据源被设置为失败",
-            checked_at=self._now,
+            checked_at=self.clock.now(),
             latency_ms=0,
         )
 
@@ -212,7 +213,7 @@ class MockMarketDataProvider(MarketDataProvider):
         return Quote(
             symbol=symbol,
             name=instrument.name,
-            quote_time=self._now,
+            quote_time=self.clock.now(),
             last_price=base_price,
             change_amount=change,
             pct_change=(change / prev_close).quantize(Decimal("0.0001")),
@@ -224,7 +225,7 @@ class MockMarketDataProvider(MarketDataProvider):
             amount=base_price * Decimal("1000000"),
             turnover_rate=Decimal("0.0123"),
             source=self.name,
-            delay_seconds=1,
+            delay_seconds=0,
         )
 
     def _build_bar(self, symbol: str, bar_time: datetime, index: int) -> Bar:

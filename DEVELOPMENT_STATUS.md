@@ -1,6 +1,6 @@
 ﻿# DEVELOPMENT_STATUS
 
-更新时间：2026-07-28
+更新时间：2026-08-03
 
 ## 恢复规则
 
@@ -111,9 +111,16 @@
 - 完整 pytest、ruff、启动和打包检查通过
 - README、数据源文档和本状态文件准确记录能力边界
 
+### 本地机构化改造 Phase 0：交易正确性基线
+
+- 0A：运行模式、可注入时钟与交易日历
+- 0B：订单状态机、NEXT_OPEN 与撮合约束
+- 0C：净值回撤、成本账务与追加式持久化
+- 0D：桌面端集成、迁移文档与完整验收
+
 ## 当前阶段
 
-阶段 10 已完成，数据库持久化、真实公开研究行情和 Windows 冻结版均已通过本轮验收。
+Phase 0A 已完成并等待提交；下一子阶段为 0B 订单状态机与撮合正确性。
 
 ## GitHub 仓库连接
 
@@ -218,7 +225,34 @@
 - 修正版 public 冻结版连续运行 45 秒，跨过后台行情和低频股票主表任务窗口，仍为正常应用窗口且无异常对话框。
 - PyInstaller 告警复核未发现当前 SQLite、Qt、AkShare/腾讯行情调用链的阻断缺失项；其余为跨平台或 pandas/SQLAlchemy 可选后端。
 
+### Phase 0A：运行模式、时钟与交易日历
+
+- 新增 `mock`、`research`、`paper` 三种明确运行模式。
+- `research` 和 `paper` 模式注入 `MockMarketDataProvider` 会立即失败，禁止隐式 Mock。
+- 策略服务和回测始终使用当前配置的同一个行情 provider，不再在真实模式自动切换 Mock。
+- `research` 模式仅允许研究与回测，禁止手工模拟下单；`paper` 才允许真实行情本地模拟交易。
+- 新增可注入 `Clock`、`SystemClock`、`FrozenClock` 和 provider 驱动的 `TradingCalendar`。
+- Mock 行情当前时间、股票上市资格判断、策略截止日和五年回测区间均由 Clock 推导。
+- 修复无历史行情时空回测结果参数缺失导致的 `TypeError`。
+
 ## 修改的文件
+
+### Phase 0A
+
+- `.env.example`
+- `app/config/mode.py`
+- `app/config/__init__.py`
+- `app/utils/clock.py`
+- `app/utils/__init__.py`
+- `app/execution/calendar.py`
+- `app/execution/__init__.py`
+- `app/data/providers/base.py`
+- `app/data/providers/mock.py`
+- `app/services/strategy_service.py`
+- `app/services/trading_app_service.py`
+- `app/backtest/engine.py`
+- `tests/unit/test_runtime_modes.py`
+- `DEVELOPMENT_STATUS.md`
 
 ### 阶段 9
 
@@ -255,6 +289,13 @@
 
 ## 测试结果
 
+Phase 0A 已执行：
+
+- `.\.venv\Scripts\python.exe -m pytest`：通过，77 个测试通过，2 个真实网络测试默认跳过。
+- `.\.venv\Scripts\python.exe -m ruff check .`：通过，`All checks passed!`。
+- `.\.venv\Scripts\python.exe -m compileall -q main.py app tests`：通过。
+- 生产代码固定日期与隐式 Mock 审计：通过。
+
 阶段 9 已执行：
 
 - `.\.venv\Scripts\python.exe -m pytest`：通过，74 个测试通过，2 个真实网络测试默认跳过。
@@ -282,6 +323,7 @@
 
 ## 当前失败项
 
+- Phase 0B 至 0D 尚未完成：订单状态机、NEXT_OPEN、部分成交续撮、动态行情时效、净值回撤与追加式审计仍待本轮实现。
 - 本轮数据库持久化、真实行情接入和 Windows 打包启动没有阻断失败项。
 - 当前虚拟环境是 Python 3.13.2；项目仍以 Python 3.11 为最低版本和 ruff 目标，但尚未在 Python 3.11 环境复验。
 - 账户仓储当前基于标准库 `sqlite3` 的显式事务，尚未迁移到 SQLAlchemy ORM；不影响当前 SQLite 持久化能力。
@@ -292,11 +334,11 @@
 
 ## 下一步准确任务
 
-1. 在独立 Python 3.11 虚拟环境中重跑 pytest、ruff、真实网络测试和 Windows 打包，关闭最低版本复验项。
-2. 开始阶段 11 回测完整化：先接入真实沪深300日线基准并增加无未来数据测试。
-3. 再实现组合卖出、再平衡、分红送股和一致复权现金处理，并补事件级回测测试。
-4. 评估有明确授权和稳定服务条款的数据源，再决定是否补真实分时与历史财务披露时点。
+1. 实现订单状态机及合法转换，补 `filled_quantity`、`remaining_quantity` 和 `eligible_at`。
+2. NEXT_OPEN 在提交日保持 `PENDING_NEXT_OPEN`，仅下一交易日开盘进入 `ELIGIBLE`。
+3. 撮合检查交易日、交易时段、订单类型、限价、停牌、退市、涨跌停和动态行情时效。
+4. 部分成交按 remaining quantity 继续撮合，并补对应单元测试。
 
 ## 下一条恢复命令或任务
 
-从项目根目录依次执行 `git status --short --branch`、`git log -5 --oneline`、`.\.venv\Scripts\python.exe -m pytest`；确认阶段 10 提交存在且工作区干净后，从“Python 3.11 独立环境复验”继续，不要重做阶段 8 至阶段 10。
+从 `feat/local-correctness-core` 执行 `git status --short --branch`、`git log -5 --oneline`、`.\.venv\Scripts\python.exe -m pytest`；确认 Phase 0A 提交存在且工作区干净后，从订单状态机模型开始 Phase 0B。
