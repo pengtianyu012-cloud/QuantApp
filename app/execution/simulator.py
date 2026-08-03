@@ -7,7 +7,7 @@ from decimal import ROUND_FLOOR, Decimal
 from app.config import APP_TIME_ZONE, TradingCostSettings, TradingRules
 from app.data.providers.base import Instrument, Quote
 from app.execution.calendar import TradingCalendar
-from app.execution.costs import execution_price_with_slippage
+from app.execution.costs import execution_price_with_adjustments
 from app.execution.trading_rules import (
     calculate_price_limits,
     get_market_phase,
@@ -30,6 +30,7 @@ class ExecutionResult:
     fill_price: Decimal | None
     reason: str
     degraded_model: bool = False
+    reference_price: Decimal | None = None
 
 
 class SimulatedMatcher:
@@ -66,6 +67,8 @@ class SimulatedMatcher:
             return ExecutionResult(OrderStatus.REJECTED, 0, None, "撤单请求不能参与撮合")
         if order.order_type is OrderType.LIMIT and order.limit_price is None:
             return ExecutionResult(OrderStatus.REJECTED, 0, None, "限价单缺少限价")
+        if instrument.is_st:
+            return ExecutionResult(OrderStatus.REJECTED, 0, None, "ST股票已从可交易股票池排除")
         if instrument.is_delisted or instrument.is_delisting:
             return ExecutionResult(OrderStatus.REJECTED, 0, None, "退市或退市整理股票禁止撮合")
         if instrument.is_suspended:
@@ -108,7 +111,7 @@ class SimulatedMatcher:
         fill_quantity = self._participation_quantity(order, interval_volume)
         if fill_quantity <= 0:
             return self._defer("可参与成交量不足，订单顺延")
-        fill_price = execution_price_with_slippage(order.side, reference_price)
+        fill_price = execution_price_with_adjustments(order.side, reference_price)
         if order.limit_price is not None:
             if order.side is OrderSide.BUY and fill_price > order.limit_price:
                 return self._defer("含滑点成交价高于买入限价，订单等待")
@@ -122,7 +125,12 @@ class SimulatedMatcher:
         )
         reason = "按盘口模拟成交" if has_order_book else "无盘口数据，使用最新价加滑点降级撮合"
         return ExecutionResult(
-            status, fill_quantity, fill_price, reason, degraded_model=not has_order_book
+            status,
+            fill_quantity,
+            fill_price,
+            reason,
+            degraded_model=not has_order_book,
+            reference_price=reference_price,
         )
 
     def _check_order_timing(

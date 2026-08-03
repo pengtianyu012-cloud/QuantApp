@@ -2,6 +2,7 @@ import unittest
 from datetime import datetime
 from decimal import Decimal
 
+from app.execution import calculate_trade_cost, execution_price_with_adjustments
 from app.models import OrderSide
 from app.portfolio import AccountError, SimulatedAccount
 
@@ -45,6 +46,60 @@ class SimulatedAccountTests(unittest.TestCase):
         total_assets = account.total_assets({"000001.SZ": Decimal("11")})
 
         self.assertGreater(total_assets, Decimal("100000"))
+
+    def test_execution_costs_are_recorded_once_and_reconcile(self) -> None:
+        account = SimulatedAccount()
+        trade_time = datetime(2030, 8, 6, 9, 30)
+        reference_price = Decimal("10.00")
+        execution_price = execution_price_with_adjustments(
+            OrderSide.BUY,
+            reference_price,
+        )
+        order = account.submit_order("000001.SZ", OrderSide.BUY, 100, trade_time)
+
+        fill = account.apply_fill(
+            order,
+            execution_price,
+            100,
+            trade_time,
+            reference_price=reference_price,
+        )
+        costs = calculate_trade_cost(
+            OrderSide.BUY,
+            execution_price,
+            100,
+            reference_price=reference_price,
+        )
+
+        self.assertEqual(
+            account.cash,
+            account.initial_cash - costs.notional - costs.cash_fees,
+        )
+        self.assertEqual(
+            account.total_assets({"000001.SZ": reference_price}),
+            account.initial_cash - costs.economic_cost,
+        )
+        self.assertEqual(account.cumulative_fees, costs.economic_cost)
+        self.assertEqual(fill.commission, costs.commission)
+        self.assertEqual(fill.tax, costs.stamp_tax)
+        self.assertEqual(fill.transfer_fee, costs.transfer_fee)
+        self.assertEqual(fill.slippage, costs.slippage)
+        self.assertEqual(fill.market_impact, costs.market_impact)
+
+    def test_daily_snapshots_track_peak_current_and_max_drawdown(self) -> None:
+        account = SimulatedAccount()
+
+        first = account.record_snapshot(datetime(2030, 8, 6, 15, 0), {})
+        account.cash = Decimal("85000")
+        trough = account.record_snapshot(datetime(2030, 8, 7, 15, 0), {})
+        account.cash = Decimal("90000")
+        recovery = account.record_snapshot(datetime(2030, 8, 8, 15, 0), {})
+
+        self.assertEqual(first.net_value, Decimal("1.000000"))
+        self.assertEqual(trough.current_drawdown, Decimal("0.150000"))
+        self.assertEqual(recovery.current_drawdown, Decimal("0.100000"))
+        self.assertEqual(recovery.max_drawdown, Decimal("0.150000"))
+        self.assertEqual(account.peak_total_assets, Decimal("100000"))
 
 
 if __name__ == "__main__":

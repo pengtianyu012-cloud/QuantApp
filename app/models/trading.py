@@ -76,6 +76,17 @@ class Order:
 
 
 @dataclass(frozen=True)
+class OrderEvent:
+    event_id: str
+    order_id: str
+    status: OrderStatus
+    event_time: datetime
+    reason: str
+    filled_quantity: int
+    remaining_quantity: int
+
+
+@dataclass(frozen=True)
 class Fill:
     fill_id: str
     order_id: str
@@ -87,8 +98,28 @@ class Fill:
     tax: Decimal
     transfer_fee: Decimal
     slippage: Decimal
+    market_impact: Decimal
     filled_at: datetime
+    reference_price: Decimal | None = None
     degraded_model: bool = False
+
+
+@dataclass(frozen=True)
+class PortfolioSnapshot:
+    account_id: str
+    snapshot_time: datetime
+    cash: Decimal
+    market_value: Decimal
+    total_assets: Decimal
+    net_value: Decimal
+    peak_total_assets: Decimal
+    current_drawdown: Decimal
+    max_drawdown: Decimal
+    cumulative_fees: Decimal
+
+    @property
+    def trade_date(self) -> date:
+        return self.snapshot_time.date()
 
 
 @dataclass

@@ -18,7 +18,7 @@ class TradingAppServiceTests(unittest.TestCase):
             OrderSide.BUY,
             "000001.SZ",
             100,
-            Decimal("10.80"),
+            Decimal("10.81"),
         )
 
         self.assertTrue(result.ok)

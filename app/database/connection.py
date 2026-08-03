@@ -53,12 +53,33 @@ def initialize_database(db_path: Path | None = None) -> Path:
         else:
             for version in range(int(current_version) + 1, SCHEMA_VERSION + 1):
                 for statement in MIGRATION_STATEMENTS.get(version, []):
-                    connection.execute(statement)
+                    _execute_migration_statement(connection, statement)
                 connection.execute(
                     "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                     (version, datetime.now(UTC).isoformat()),
                 )
     return path
+
+
+def _execute_migration_statement(
+    connection: sqlite3.Connection,
+    statement: str,
+) -> None:
+    normalized = " ".join(statement.split())
+    parts = normalized.split()
+    if len(parts) >= 6 and parts[0:2] == ["ALTER", "TABLE"]:
+        table_name = parts[2]
+        if parts[3:5] == ["ADD", "COLUMN"]:
+            column_name = parts[5]
+            columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    f"PRAGMA table_info({table_name})"
+                ).fetchall()
+            }
+            if column_name in columns:
+                return
+    connection.execute(statement)
 
 
 def get_schema_version(db_path: Path | None = None) -> int | None:

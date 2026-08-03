@@ -32,9 +32,8 @@ class RiskManager:
         symbol: str,
         order_value: Decimal,
         latest_prices: dict[str, Decimal],
-        current_drawdown: Decimal = Decimal("0"),
     ) -> RiskResult:
-        if current_drawdown >= self.limits.max_drawdown_pct:
+        if account.current_drawdown >= self.limits.max_drawdown_pct:
             return RiskResult(False, "最大回撤达到15%，暂停新增买入")
         total_assets = account.total_assets(latest_prices)
         if total_assets <= Decimal("0"):
@@ -61,8 +60,7 @@ class RiskManager:
         symbol: str,
         order_value: Decimal,
         latest_prices: dict[str, Decimal],
-        current_drawdown: Decimal = Decimal("0"),
     ) -> RiskResult:
         if side is OrderSide.SELL:
             return RiskResult(True, "卖出不受新增买入风控暂停限制")
-        return self.check_buy_order(account, symbol, order_value, latest_prices, current_drawdown)
+        return self.check_buy_order(account, symbol, order_value, latest_prices)

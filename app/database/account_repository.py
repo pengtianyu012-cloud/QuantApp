@@ -7,7 +7,16 @@ from pathlib import Path
 
 from app.config import APP_TIME_ZONE
 from app.database.connection import connect_database, initialize_database
-from app.models import Fill, Order, OrderSide, OrderStatus, OrderType, Position
+from app.models import (
+    Fill,
+    Order,
+    OrderEvent,
+    OrderSide,
+    OrderStatus,
+    OrderType,
+    PortfolioSnapshot,
+    Position,
+)
 from app.portfolio.account import SimulatedAccount
 
 
@@ -47,6 +56,18 @@ class AccountRepository:
                     "WHERE orders.account_id = ? ORDER BY fills.filled_at, fills.fill_id",
                     (account_id,),
                 ).fetchall()
+                event_rows = connection.execute(
+                    "SELECT order_events.* FROM order_events "
+                    "JOIN orders ON orders.order_id = order_events.order_id "
+                    "WHERE orders.account_id = ? "
+                    "ORDER BY order_events.event_time, order_events.event_id",
+                    (account_id,),
+                ).fetchall()
+                snapshot_rows = connection.execute(
+                    "SELECT * FROM portfolio_snapshots WHERE account_id = ? "
+                    "ORDER BY snapshot_time",
+                    (account_id,),
+                ).fetchall()
 
             positions = {
                 str(row["symbol"]): Position(
@@ -65,6 +86,8 @@ class AccountRepository:
             }
             orders = [self._row_to_order(row) for row in order_rows]
             fills = [self._row_to_fill(row) for row in fill_rows]
+            order_events = [self._row_to_order_event(row) for row in event_rows]
+            snapshots = [self._row_to_snapshot(row) for row in snapshot_rows]
             return SimulatedAccount(
                 account_id=str(account_row["account_id"]),
                 name=str(account_row["name"]),
@@ -73,11 +96,18 @@ class AccountRepository:
                 positions=positions,
                 orders=orders,
                 fills=fills,
+                order_events=order_events,
+                snapshots=snapshots,
+                peak_total_assets=Decimal(str(account_row["peak_total_assets"])),
+                current_drawdown=Decimal(str(account_row["current_drawdown"])),
+                max_drawdown=Decimal(str(account_row["max_drawdown"])),
+                cumulative_fees=Decimal(str(account_row["cumulative_fees"])),
             )
         except (sqlite3.Error, ValueError, TypeError) as exc:
             raise AccountRepositoryError(f"账户恢复失败：{exc}") from exc
 
     def save(self, account: SimulatedAccount) -> None:
+        self._validate_unique_audit_ids(account)
         now = datetime.now(UTC).isoformat()
         try:
             with connect_database(self.db_path) as connection:
@@ -85,13 +115,19 @@ class AccountRepository:
                     """
                     INSERT INTO accounts (
                         account_id, name, initial_cash, cash, total_assets,
-                        max_drawdown, risk_status, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, '0', '允许交易', ?, ?)
+                        peak_total_assets, current_drawdown, max_drawdown,
+                        cumulative_fees, risk_status, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(account_id) DO UPDATE SET
                         name = excluded.name,
                         initial_cash = excluded.initial_cash,
                         cash = excluded.cash,
                         total_assets = excluded.total_assets,
+                        peak_total_assets = excluded.peak_total_assets,
+                        current_drawdown = excluded.current_drawdown,
+                        max_drawdown = excluded.max_drawdown,
+                        cumulative_fees = excluded.cumulative_fees,
+                        risk_status = excluded.risk_status,
                         updated_at = excluded.updated_at
                     """,
                     (
@@ -99,7 +135,12 @@ class AccountRepository:
                         account.name,
                         str(account.initial_cash),
                         str(account.cash),
-                        str(account.total_assets()),
+                        str(account.current_total_assets),
+                        str(account.peak_total_assets),
+                        str(account.current_drawdown),
+                        str(account.max_drawdown),
+                        str(account.cumulative_fees),
+                        account.risk_status,
                         now,
                         now,
                     ),
@@ -108,13 +149,6 @@ class AccountRepository:
                 connection.execute(
                     "DELETE FROM positions WHERE account_id = ?", (account.account_id,)
                 )
-                connection.execute(
-                    "DELETE FROM fills WHERE order_id IN "
-                    "(SELECT order_id FROM orders WHERE account_id = ?)",
-                    (account.account_id,),
-                )
-                connection.execute("DELETE FROM orders WHERE account_id = ?", (account.account_id,))
-
                 connection.executemany(
                     """
                     INSERT INTO positions (
@@ -142,8 +176,22 @@ class AccountRepository:
                     """
                     INSERT INTO orders (
                         order_id, account_id, symbol, side, order_type, quantity,
-                        limit_price, status, reason, submitted_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        limit_price, status, reason, eligible_at, filled_quantity,
+                        remaining_quantity, submitted_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(order_id) DO UPDATE SET
+                        account_id = excluded.account_id,
+                        symbol = excluded.symbol,
+                        side = excluded.side,
+                        order_type = excluded.order_type,
+                        quantity = excluded.quantity,
+                        limit_price = excluded.limit_price,
+                        status = excluded.status,
+                        reason = excluded.reason,
+                        eligible_at = excluded.eligible_at,
+                        filled_quantity = excluded.filled_quantity,
+                        remaining_quantity = excluded.remaining_quantity,
+                        updated_at = excluded.updated_at
                     """,
                     [
                         (
@@ -156,8 +204,15 @@ class AccountRepository:
                             str(order.limit_price) if order.limit_price is not None else None,
                             order.status.value,
                             order.reason,
+                            self._datetime_to_iso(order.eligible_at)
+                            if order.eligible_at is not None
+                            else None,
+                            order.filled_quantity,
+                            order.remaining_quantity,
                             self._datetime_to_iso(order.submitted_at),
-                            now,
+                            self._datetime_to_iso(
+                                order.updated_at or order.submitted_at
+                            ),
                         )
                         for order in account.orders
                     ],
@@ -167,8 +222,9 @@ class AccountRepository:
                     INSERT INTO fills (
                         fill_id, order_id, symbol, side, quantity, price,
                         commission, tax, transfer_fee, slippage,
-                        degraded_model, filled_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        market_impact, reference_price, degraded_model, filled_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(fill_id) DO NOTHING
                     """,
                     [
                         (
@@ -182,11 +238,59 @@ class AccountRepository:
                             str(fill.tax),
                             str(fill.transfer_fee),
                             str(fill.slippage),
+                            str(fill.market_impact),
+                            str(fill.reference_price)
+                            if fill.reference_price is not None
+                            else None,
                             int(fill.degraded_model),
                             self._datetime_to_iso(fill.filled_at),
                         )
                         for fill in account.fills
                     ],
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO order_events (
+                        event_id, order_id, status, event_time, reason,
+                        filled_quantity, remaining_quantity
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(event_id) DO NOTHING
+                    """,
+                    [
+                        (
+                            event.event_id,
+                            event.order_id,
+                            event.status.value,
+                            self._datetime_to_iso(event.event_time),
+                            event.reason,
+                            event.filled_quantity,
+                            event.remaining_quantity,
+                        )
+                        for event in account.order_events
+                    ],
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO portfolio_snapshots (
+                        account_id, trade_date, snapshot_time, cash, market_value,
+                        total_assets, net_value, peak_total_assets,
+                        current_drawdown, daily_pnl, cumulative_return,
+                        max_drawdown, cumulative_fees
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(account_id, trade_date) DO UPDATE SET
+                        snapshot_time = excluded.snapshot_time,
+                        cash = excluded.cash,
+                        market_value = excluded.market_value,
+                        total_assets = excluded.total_assets,
+                        net_value = excluded.net_value,
+                        peak_total_assets = excluded.peak_total_assets,
+                        current_drawdown = excluded.current_drawdown,
+                        daily_pnl = excluded.daily_pnl,
+                        cumulative_return = excluded.cumulative_return,
+                        max_drawdown = excluded.max_drawdown,
+                        cumulative_fees = excluded.cumulative_fees
+                    """,
+                    self._snapshot_rows(account),
                 )
         except sqlite3.Error as exc:
             raise AccountRepositoryError(f"账户保存失败：{exc}") from exc
@@ -219,6 +323,14 @@ class AccountRepository:
             else None,
             status=OrderStatus(str(row["status"])),
             reason=str(row["reason"] or ""),
+            eligible_at=(
+                cls._parse_datetime(str(row["eligible_at"]))
+                if row["eligible_at"] is not None
+                else None
+            ),
+            filled_quantity=int(row["filled_quantity"]),
+            remaining_quantity=int(row["remaining_quantity"]),
+            updated_at=cls._parse_datetime(str(row["updated_at"])),
         )
 
     @classmethod
@@ -234,6 +346,76 @@ class AccountRepository:
             tax=Decimal(str(row["tax"])),
             transfer_fee=Decimal(str(row["transfer_fee"])),
             slippage=Decimal(str(row["slippage"])),
+            market_impact=Decimal(str(row["market_impact"])),
             filled_at=cls._parse_datetime(str(row["filled_at"])),
+            reference_price=(
+                Decimal(str(row["reference_price"]))
+                if row["reference_price"] is not None
+                else None
+            ),
             degraded_model=bool(row["degraded_model"]),
         )
+
+    @classmethod
+    def _row_to_order_event(cls, row: sqlite3.Row) -> OrderEvent:
+        return OrderEvent(
+            event_id=str(row["event_id"]),
+            order_id=str(row["order_id"]),
+            status=OrderStatus(str(row["status"])),
+            event_time=cls._parse_datetime(str(row["event_time"])),
+            reason=str(row["reason"] or ""),
+            filled_quantity=int(row["filled_quantity"]),
+            remaining_quantity=int(row["remaining_quantity"]),
+        )
+
+    @classmethod
+    def _row_to_snapshot(cls, row: sqlite3.Row) -> PortfolioSnapshot:
+        return PortfolioSnapshot(
+            account_id=str(row["account_id"]),
+            snapshot_time=cls._parse_datetime(str(row["snapshot_time"])),
+            cash=Decimal(str(row["cash"])),
+            market_value=Decimal(str(row["market_value"])),
+            total_assets=Decimal(str(row["total_assets"])),
+            net_value=Decimal(str(row["net_value"])),
+            peak_total_assets=Decimal(str(row["peak_total_assets"])),
+            current_drawdown=Decimal(str(row["current_drawdown"])),
+            max_drawdown=Decimal(str(row["max_drawdown"])),
+            cumulative_fees=Decimal(str(row["cumulative_fees"])),
+        )
+
+    @classmethod
+    def _snapshot_rows(cls, account: SimulatedAccount) -> list[tuple[object, ...]]:
+        rows: list[tuple[object, ...]] = []
+        previous_total = account.initial_cash
+        for snapshot in sorted(account.snapshots, key=lambda item: item.snapshot_time):
+            rows.append(
+                (
+                    snapshot.account_id,
+                    snapshot.trade_date.isoformat(),
+                    cls._datetime_to_iso(snapshot.snapshot_time),
+                    str(snapshot.cash),
+                    str(snapshot.market_value),
+                    str(snapshot.total_assets),
+                    str(snapshot.net_value),
+                    str(snapshot.peak_total_assets),
+                    str(snapshot.current_drawdown),
+                    str(snapshot.total_assets - previous_total),
+                    str(snapshot.net_value - Decimal("1")),
+                    str(snapshot.max_drawdown),
+                    str(snapshot.cumulative_fees),
+                )
+            )
+            previous_total = snapshot.total_assets
+        return rows
+
+    @staticmethod
+    def _validate_unique_audit_ids(account: SimulatedAccount) -> None:
+        for label, values in (
+            ("order", [item.order_id for item in account.orders]),
+            ("fill", [item.fill_id for item in account.fills]),
+            ("order event", [item.event_id for item in account.order_events]),
+        ):
+            if len(values) != len(set(values)):
+                raise AccountRepositoryError(
+                    f"Duplicate {label} identifier in account ledger"
+                )

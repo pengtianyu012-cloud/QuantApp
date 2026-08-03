@@ -24,7 +24,7 @@ class UiManualOrderTests(unittest.TestCase):
             OrderSide.BUY,
             symbol="000001.SZ",
             quantity=100,
-            limit_price=Decimal("10.80"),
+            limit_price=Decimal("10.81"),
             confirm=False,
         )
 

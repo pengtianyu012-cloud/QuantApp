@@ -2,6 +2,7 @@ from app.execution.calendar import ProviderTradingCalendar, TradingCalendar
 from app.execution.costs import (
     TradeCostBreakdown,
     calculate_trade_cost,
+    execution_price_with_adjustments,
     execution_price_with_slippage,
 )
 from app.execution.order_state import InvalidOrderTransition, OrderStateMachine
@@ -32,6 +33,7 @@ __all__ = [
     "TradingCalendar",
     "calculate_price_limits",
     "calculate_trade_cost",
+    "execution_price_with_adjustments",
     "execution_price_with_slippage",
     "get_market_phase",
     "identify_security",

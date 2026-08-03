@@ -1,4 +1,5 @@
 import unittest
+from copy import deepcopy
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -6,7 +7,7 @@ from tempfile import TemporaryDirectory
 
 from app.config import APP_TIME_ZONE
 from app.database import AccountRepository, AccountRepositoryError, connect_database
-from app.models import OrderSide, OrderStatus
+from app.models import OrderSide, OrderStatus, OrderType
 from app.portfolio import SimulatedAccount
 from app.services import TradingAppService
 from app.utils import FrozenClock
@@ -83,7 +84,7 @@ class AccountRepositoryTests(unittest.TestCase):
             OrderSide.BUY,
             "000001.SZ",
             100,
-            Decimal("10.80"),
+            Decimal("10.81"),
         )
         self.assertTrue(result.ok)
 
@@ -93,6 +94,76 @@ class AccountRepositoryTests(unittest.TestCase):
         self.assertIn("000001.SZ", restarted.account.positions)
         self.assertEqual(len(restarted.account.orders), 1)
         self.assertEqual(len(restarted.account.fills), 1)
+
+    def test_restart_restores_partial_order_snapshots_drawdown_and_fees(self) -> None:
+        account = SimulatedAccount()
+        trade_time = datetime(2030, 8, 6, 9, 30, tzinfo=APP_TIME_ZONE)
+        order = account.submit_order(
+            "000001.SZ",
+            OrderSide.BUY,
+            6000,
+            trade_time,
+            order_type=OrderType.MARKET,
+        )
+        account.apply_fill(
+            order,
+            Decimal("10.01"),
+            5000,
+            trade_time,
+            reference_price=Decimal("10.00"),
+        )
+        account.record_snapshot(
+            datetime(2030, 8, 6, 15, 0, tzinfo=APP_TIME_ZONE),
+            {"000001.SZ": Decimal("7.00")},
+        )
+
+        self.repository.save(account)
+        restored = self.repository.load(account.account_id)
+
+        assert restored is not None
+        restored_order = restored.orders[0]
+        self.assertEqual(restored_order.status, OrderStatus.PARTIALLY_FILLED)
+        self.assertEqual(restored_order.filled_quantity, 5000)
+        self.assertEqual(restored_order.remaining_quantity, 1000)
+        self.assertEqual(restored.peak_total_assets, account.peak_total_assets)
+        self.assertEqual(restored.current_drawdown, account.current_drawdown)
+        self.assertEqual(restored.max_drawdown, account.max_drawdown)
+        self.assertGreaterEqual(restored.current_drawdown, Decimal("0.15"))
+        self.assertEqual(restored.cumulative_fees, account.cumulative_fees)
+        self.assertEqual(restored.snapshots, account.snapshots)
+        self.assertEqual(restored.fills[0].market_impact, Decimal("30.00"))
+        self.assertEqual(restored.fills[0].reference_price, Decimal("10.00"))
+
+    def test_order_fill_and_event_history_is_append_only(self) -> None:
+        account = SimulatedAccount()
+        trade_time = datetime(2030, 8, 6, 9, 30, tzinfo=APP_TIME_ZONE)
+        order = account.submit_order(
+            "000001.SZ",
+            OrderSide.BUY,
+            100,
+            trade_time,
+            order_type=OrderType.MARKET,
+        )
+        account.apply_fill(order, Decimal("10.01"), 100, trade_time)
+        self.repository.save(account)
+        expected_order_ids = {item.order_id for item in account.orders}
+        expected_fill_ids = {item.fill_id for item in account.fills}
+        expected_event_ids = {item.event_id for item in account.order_events}
+
+        current_state_only = deepcopy(account)
+        current_state_only.orders.clear()
+        current_state_only.fills.clear()
+        current_state_only.order_events.clear()
+        self.repository.save(current_state_only)
+        restored = self.repository.load(account.account_id)
+
+        assert restored is not None
+        self.assertEqual({item.order_id for item in restored.orders}, expected_order_ids)
+        self.assertEqual({item.fill_id for item in restored.fills}, expected_fill_ids)
+        self.assertEqual(
+            {item.event_id for item in restored.order_events},
+            expected_event_ids,
+        )
 
 
 if __name__ == "__main__":

@@ -43,6 +43,8 @@ class RiskManagerTests(unittest.TestCase):
 
     def test_drawdown_blocks_new_buy_but_not_sell(self) -> None:
         account = SimulatedAccount()
+        account.cash = Decimal("85000")
+        account.record_snapshot(datetime(2030, 8, 6, 15, 0), {})
         manager = RiskManager()
 
         buy_result = manager.check_order(
@@ -51,7 +53,6 @@ class RiskManagerTests(unittest.TestCase):
             "600519.SH",
             Decimal("10000"),
             {},
-            current_drawdown=Decimal("0.15"),
         )
         sell_result = manager.check_order(
             OrderSide.SELL,
@@ -59,7 +60,6 @@ class RiskManagerTests(unittest.TestCase):
             "600519.SH",
             Decimal("10000"),
             {},
-            current_drawdown=Decimal("0.20"),
         )
 
         self.assertFalse(buy_result.passed)

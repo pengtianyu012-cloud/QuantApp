@@ -120,7 +120,7 @@
 
 ## 当前阶段
 
-Phase 0B 已完成并等待提交；下一子阶段为 0C 净值回撤、成本账务与追加式持久化。
+Phase 0C 已完成；下一子阶段为 0D 桌面端集成、迁移文档与完整验收。
 
 ## GitHub 仓库连接
 
@@ -246,7 +246,44 @@ Phase 0B 已完成并等待提交；下一子阶段为 0C 净值回撤、成本�
 - 部分成交按 remaining quantity 继续撮合，后续成交可准确转为 FILLED。
 - 手工订单默认按有价格为 LIMIT、无价格为 MARKET，另支持显式 NEXT_OPEN；新增待处理订单续撮入口。
 
+### Phase 0C：净值回撤、成本账务与追加式持久化
+
+- 新增每日 PortfolioSnapshot，持续保存现金、持仓市值、总资产、净值、历史峰值、当前回撤、最大回撤和累计费用。
+- 下单风控强制读取账户真实 current_drawdown；达到 15% 后阻止新增买入，卖出仍允许。
+- 滑点和市场冲击统一体现在成交价中，现金仅额外扣除佣金、印花税和过户费，避免价格影响重复扣费。
+- Fill 完整记录参考价、成交价、佣金、印花税、过户费、滑点、市场冲击和降级撮合标记。
+- OrderEvent 追加记录订单每次状态变化；订单行只更新当前状态，成交和事件只追加，不再删除重建历史流水。
+- SQLite 升级到 v3，持久化订单可撮合时间、已成交量、剩余量、费用、账户峰值和回撤；旧 v2 数据可事务升级。
+- 旧库迁移会推导历史订单成交/剩余数量、映射旧待成交状态、补种审计事件并去重同一交易日快照。
+- ST、退市整理、已退市和上市不足 60 日股票均在撮合层拒绝；停牌订单保持顺延。
+- 桌面端股票资格提示使用服务注入的 Clock，不再通过隐式系统日期判断。
+- Phase 0C 稳定提交：feat: persist portfolio correctness ledger（见当前分支最近提交）。
+
 ## 修改的文件
+
+### Phase 0C
+
+- app/backtest/engine.py
+- app/database/account_repository.py
+- app/database/connection.py
+- app/database/schema.py
+- app/execution/__init__.py
+- app/execution/costs.py
+- app/execution/simulator.py
+- app/models/__init__.py
+- app/models/trading.py
+- app/portfolio/account.py
+- app/risk/checks.py
+- app/services/trading_app_service.py
+- app/ui/main_window.py
+- tests/integration/test_ui_manual_order.py
+- tests/unit/test_account.py
+- tests/unit/test_account_repository.py
+- tests/unit/test_database.py
+- tests/unit/test_execution_simulator.py
+- tests/unit/test_risk.py
+- tests/unit/test_trading_app_service.py
+- DEVELOPMENT_STATUS.md
 
 ### Phase 0B
 
@@ -314,6 +351,15 @@ Phase 0B 已完成并等待提交；下一子阶段为 0C 净值回撤、成本�
 
 ## 测试结果
 
+Phase 0C 已执行：
+
+- .\.venv\Scripts\python.exe -m pytest：通过，87 个测试通过，2 个真实网络测试默认跳过，2 个子测试通过。
+- .\.venv\Scripts\python.exe -m ruff check .：通过，All checks passed!。
+- .\.venv\Scripts\python.exe -m compileall -q app main.py tests：通过。
+- 成本只计一次、现金/持仓/费用/总资产对账、日净值峰值与回撤、15% 买入暂停、部分成交恢复和追加式审计测试：通过。
+- v2 到 v3 真实旧表结构迁移、旧状态映射、成交量推导、事件补种和同日快照去重测试：通过。
+- ST、上市不足 60 日、退市整理、已退市、停牌、涨跌停、T+1 和 100 股规则测试：通过。
+
 Phase 0B 已执行：
 
 - `.\.venv\Scripts\python.exe -m pytest`：通过，81 个测试通过，2 个真实网络测试默认跳过。
@@ -355,7 +401,8 @@ Phase 0A 已执行：
 
 ## 当前失败项
 
-- Phase 0C 至 0D 尚未完成：订单新字段尚未迁移入数据库，净值回撤、成本账务与追加式审计仍待本轮实现。
+- Phase 0C 无阻断失败项。
+- Phase 0D 尚未完成：桌面端回撤/费用展示、README 与迁移文档、最终启动检查和完整验收待执行。
 - 本轮数据库持久化、真实行情接入和 Windows 打包启动没有阻断失败项。
 - 当前虚拟环境是 Python 3.13.2；项目仍以 Python 3.11 为最低版本和 ruff 目标，但尚未在 Python 3.11 环境复验。
 - 账户仓储当前基于标准库 `sqlite3` 的显式事务，尚未迁移到 SQLAlchemy ORM；不影响当前 SQLite 持久化能力。
@@ -366,11 +413,11 @@ Phase 0A 已执行：
 
 ## 下一步准确任务
 
-1. 建立每日 `PortfolioSnapshot`，计算净值、历史峰值、当前回撤、最大回撤和累计费用。
-2. 风控读取账户真实 current drawdown，15% 后阻止买入但允许卖出。
-3. 统一滑点/市场冲击价格调整和显式费用口径，补完整 Fill 字段与账务恒等式测试。
-4. 数据库升级并持久化订单剩余量、快照、峰值与回撤；订单事件和成交采用追加式审计写入。
+1. 在桌面总览和模拟交易页展示当前回撤、最大回撤、累计费用、订单已成交量与剩余量。
+2. 更新 README、架构、用户指南和迁移说明，准确描述 mock/research/paper、v3 数据库和成本口径。
+3. 审计生产代码和文档中的固定演示日期、隐式 Mock、云/Web 技术栈和过期能力描述。
+4. 执行完整 pytest、ruff、compileall 和 PySide6 offscreen 启动检查，记录最终 Phase 0 验收结果。
 
 ## 下一条恢复命令或任务
 
-从 `feat/local-correctness-core` 执行 `git status --short --branch`、`git log -5 --oneline`、`.\.venv\Scripts\python.exe -m pytest`；确认 Phase 0B 提交存在且工作区干净后，从 PortfolioSnapshot 与成本账务模型开始 Phase 0C。
+从 feat/local-correctness-core 执行 git status --short --branch、git log -5 --oneline、.\.venv\Scripts\python.exe -m pytest；确认最近提交为 feat: persist portfolio correctness ledger 且工作区干净后，从桌面端回撤/费用/订单剩余量展示开始 Phase 0D。

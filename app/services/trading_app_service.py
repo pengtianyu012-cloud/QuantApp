@@ -26,7 +26,7 @@ from app.execution import (
     TradingCalendar,
     identify_security,
 )
-from app.models import Fill, Order, OrderSide, OrderStatus, OrderType
+from app.models import Fill, Order, OrderSide, OrderStatus, OrderType, PortfolioSnapshot
 from app.portfolio import AccountError, SimulatedAccount
 from app.risk import RiskManager
 from app.services.strategy_service import StrategyService
@@ -76,6 +76,7 @@ class TradingAppService:
             else self.mode.requires_real_market_data
         )
         self._market_lock = RLock()
+        self._account_lock = RLock()
         self._quote_snapshot: list[Quote] = []
         self._instrument_snapshot: list[Instrument] = []
         self._order_book_snapshots: dict[str, OrderBook] = {}
@@ -126,7 +127,7 @@ class TradingAppService:
             "cash": format_money(self.account.cash),
             "market_value": format_money(self.account.market_value(latest_prices)),
             "persistence_status": "正常" if not self.persistence_error else "不可用",
-            "risk_status": "允许交易",
+            "risk_status": self.account.risk_status,
             "running_strategy": "未运行",
         }
 
@@ -156,6 +157,7 @@ class TradingAppService:
             self._order_book_snapshots = order_books
             self._provider_health = health
             self.last_market_error = "" if health.ok else health.message
+        self.record_portfolio_snapshot(self.clock.now(), quotes)
         return quotes
 
     def refresh_instruments(self) -> list[Instrument]:
@@ -217,15 +219,19 @@ class TradingAppService:
                 raise MarketDataError("当前没有该股票的可用行情，请先后台刷新自选股")
             instrument = self._find_instrument(symbol)
             order_price = limit_price or quote.last_price
+            latest_prices = self.latest_price_map()
+            latest_prices[symbol] = quote.last_price
+            working_account.record_snapshot(now, latest_prices)
             if side is OrderSide.BUY:
                 risk_result = self.risk.check_order(
                     side,
                     working_account,
                     symbol,
                     order_price * Decimal(quantity),
-                    self.latest_price_map(),
+                    latest_prices,
                 )
                 if not risk_result.passed:
+                    self._commit_account(working_account)
                     return ManualOrderResult(False, None, None, risk_result.message)
 
             selected_order_type = order_type or (
@@ -265,7 +271,9 @@ class TradingAppService:
                     stock_name=quote.name,
                     degraded_model=execution.degraded_model,
                     reason=execution.reason,
+                    reference_price=execution.reference_price,
                 )
+                working_account.record_snapshot(now, latest_prices)
                 updated_order = working_account.get_order(order.order_id)
                 self._commit_account(working_account)
                 return ManualOrderResult(True, updated_order, fill, execution.reason)
@@ -273,6 +281,7 @@ class TradingAppService:
             updated_order = working_account.update_order_status(
                 order, execution.status, execution.reason
             )
+            working_account.record_snapshot(now, latest_prices)
             self._commit_account(working_account)
             accepted = not updated_order.status.is_terminal
             return ManualOrderResult(accepted, updated_order, None, execution.reason)
@@ -315,6 +324,26 @@ class TradingAppService:
             if quote is None:
                 raise MarketDataError("当前没有该股票的可用行情")
             instrument = self._find_instrument(order.symbol)
+            latest_prices = self.latest_price_map()
+            latest_prices[order.symbol] = quote.last_price
+            working_account.record_snapshot(now, latest_prices)
+            if order.side is OrderSide.BUY:
+                risk_result = self.risk.check_order(
+                    order.side,
+                    working_account,
+                    order.symbol,
+                    quote.last_price * Decimal(order.remaining_quantity or 0),
+                    latest_prices,
+                )
+                if not risk_result.passed:
+                    updated_order = working_account.update_order_status(
+                        order,
+                        OrderStatus.DEFERRED,
+                        risk_result.message,
+                        occurred_at=now,
+                    )
+                    self._commit_account(working_account)
+                    return ManualOrderResult(True, updated_order, None, risk_result.message)
             execution = self.matcher.evaluate(
                 order,
                 quote,
@@ -334,13 +363,16 @@ class TradingAppService:
                     stock_name=quote.name,
                     degraded_model=execution.degraded_model,
                     reason=execution.reason,
+                    reference_price=execution.reference_price,
                 )
+                working_account.record_snapshot(now, latest_prices)
                 updated_order = working_account.get_order(order.order_id)
                 self._commit_account(working_account)
                 return ManualOrderResult(True, updated_order, fill, execution.reason)
             updated_order = working_account.update_order_status(
                 order, execution.status, execution.reason, occurred_at=now
             )
+            working_account.record_snapshot(now, latest_prices)
             self._commit_account(working_account)
             return ManualOrderResult(
                 not updated_order.status.is_terminal,
@@ -358,6 +390,21 @@ class TradingAppService:
         working_account.advance_trading_day()
         self._commit_account(working_account)
 
+    def record_portfolio_snapshot(
+        self,
+        snapshot_time: datetime | None = None,
+        quotes: list[Quote] | None = None,
+    ) -> PortfolioSnapshot:
+        current_quotes = quotes if quotes is not None else self.get_watchlist_quotes()
+        latest_prices = {quote.symbol: quote.last_price for quote in current_quotes}
+        with self._account_lock:
+            working_account = deepcopy(self.account)
+            snapshot = working_account.record_snapshot(
+                snapshot_time or self.clock.now(), latest_prices
+            )
+            self._commit_account(working_account)
+        return snapshot
+
     def run_demo_backtest(self) -> BacktestResult:
         engine = DailyBacktestEngine(self.market_data)
         strategy = MovingAverageTrendStrategy({"short_window": 3, "long_window": 5})
@@ -372,9 +419,10 @@ class TradingAppService:
         raise ValueError(f"未知股票代码：{symbol}")
 
     def _commit_account(self, account: SimulatedAccount) -> None:
-        if self.account_repository is not None:
-            self.account_repository.save(account)
-        self.account = account
+        with self._account_lock:
+            if self.account_repository is not None:
+                self.account_repository.save(account)
+            self.account = account
 
 
 def format_money(value: Decimal) -> str:

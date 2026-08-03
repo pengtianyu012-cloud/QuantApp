@@ -601,15 +601,14 @@ class QuantMainWindow(QMainWindow):
             )
         return rows
 
-    @staticmethod
-    def instrument_note(instrument: Instrument) -> str:
+    def instrument_note(self, instrument: Instrument) -> str:
         if instrument.is_st:
             return "排除ST"
         if instrument.is_delisting:
             return "排除退市整理"
         if instrument.is_delisted:
             return "排除已退市"
-        if not instrument.eligible:
+        if not instrument.is_eligible(self.service.clock.today()):
             return f"排除上市不足{TradingRules().min_listing_days}日"
         return "纳入股票池"
 

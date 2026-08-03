@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from app.data.providers import Bar, MarketDataProvider
-from app.execution.costs import calculate_trade_cost
+from app.execution.costs import calculate_trade_cost, execution_price_with_adjustments
 from app.models import OrderSide
 from app.strategies import Strategy, StrategySignal
 
@@ -76,14 +76,29 @@ class DailyBacktestEngine:
                 continue
             signal = signals[0]
             next_bar = bars[index + 1]
-            cost = calculate_trade_cost(OrderSide.BUY, next_bar.open_price, quantity)
-            cash_required = cost.notional + cost.total
+            execution_price = execution_price_with_adjustments(
+                OrderSide.BUY, next_bar.open_price
+            )
+            cost = calculate_trade_cost(
+                OrderSide.BUY,
+                execution_price,
+                quantity,
+                reference_price=next_bar.open_price,
+            )
+            cash_required = cost.notional + cost.cash_fees
             if cash_required > cash:
                 continue
             cash -= cash_required
             position_quantity += quantity
             trades.append(
-                self._trade_from_signal(symbol, signal, visible_bars[-1], next_bar, quantity)
+                self._trade_from_signal(
+                    symbol,
+                    signal,
+                    visible_bars[-1],
+                    next_bar,
+                    quantity,
+                    execution_price,
+                )
             )
             break
         final_cash = cash + Decimal(position_quantity) * bars[-1].close_price
@@ -105,6 +120,7 @@ class DailyBacktestEngine:
         signal_bar: Bar,
         fill_bar: Bar,
         quantity: int,
+        fill_price: Decimal,
     ) -> BacktestTrade:
         return BacktestTrade(
             symbol=symbol,
@@ -113,6 +129,6 @@ class DailyBacktestEngine:
             side=OrderSide.BUY,
             quantity=quantity,
             signal_price=signal_bar.close_price,
-            fill_price=fill_bar.open_price,
+            fill_price=fill_price,
             reason=signal.reason,
         )

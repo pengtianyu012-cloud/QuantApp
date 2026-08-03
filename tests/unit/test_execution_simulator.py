@@ -165,7 +165,13 @@ class ExecutionSimulatorTests(unittest.TestCase):
         self.assertEqual(completed.filled_quantity, 1_000)
         self.assertEqual(completed.remaining_quantity, 0)
 
-    def test_suspended_and_delisted_stocks_cannot_fill(self) -> None:
+    def test_st_suspended_delisting_and_delisted_stocks_cannot_fill(self) -> None:
+        st = self.matcher.evaluate(
+            self.order(),
+            self.quote,
+            replace(self.instrument, is_st=True),
+            self.now,
+        )
         suspended = self.matcher.evaluate(
             self.order(),
             self.quote,
@@ -178,9 +184,28 @@ class ExecutionSimulatorTests(unittest.TestCase):
             replace(self.instrument, is_delisted=True),
             self.now,
         )
+        delisting = self.matcher.evaluate(
+            self.order(),
+            self.quote,
+            replace(self.instrument, is_delisting=True),
+            self.now,
+        )
 
+        self.assertEqual(st.status, OrderStatus.REJECTED)
         self.assertEqual(suspended.status, OrderStatus.DEFERRED)
         self.assertEqual(delisted.status, OrderStatus.REJECTED)
+        self.assertEqual(delisting.status, OrderStatus.REJECTED)
+
+    def test_stock_listed_for_less_than_60_days_is_rejected(self) -> None:
+        result = self.matcher.evaluate(
+            self.order(),
+            self.quote,
+            self.instrument,
+            self.now,
+            listing_days=59,
+        )
+
+        self.assertEqual(result.status, OrderStatus.REJECTED)
 
     def test_limit_up_blocks_buy_and_limit_down_blocks_sell(self) -> None:
         limits = calculate_price_limits(self.quote.prev_close, self.instrument.board)

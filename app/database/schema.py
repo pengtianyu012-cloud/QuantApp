@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 CORE_TABLES = [
     "instruments",
@@ -15,6 +15,7 @@ CORE_TABLES = [
     "accounts",
     "positions",
     "orders",
+    "order_events",
     "fills",
     "portfolio_snapshots",
     "risk_events",
@@ -163,7 +164,10 @@ SCHEMA_STATEMENTS = [
         initial_cash TEXT NOT NULL,
         cash TEXT NOT NULL,
         total_assets TEXT NOT NULL,
+        peak_total_assets TEXT NOT NULL,
+        current_drawdown TEXT NOT NULL DEFAULT '0',
         max_drawdown TEXT NOT NULL DEFAULT '0',
+        cumulative_fees TEXT NOT NULL DEFAULT '0',
         risk_status TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -195,8 +199,23 @@ SCHEMA_STATEMENTS = [
         limit_price TEXT,
         status TEXT NOT NULL,
         reason TEXT,
+        eligible_at TEXT,
+        filled_quantity INTEGER NOT NULL DEFAULT 0,
+        remaining_quantity INTEGER NOT NULL,
         submitted_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS order_events (
+        event_id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        event_time TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        filled_quantity INTEGER NOT NULL,
+        remaining_quantity INTEGER NOT NULL,
+        FOREIGN KEY (order_id) REFERENCES orders(order_id)
     )
     """,
     """
@@ -211,6 +230,8 @@ SCHEMA_STATEMENTS = [
         tax TEXT NOT NULL,
         transfer_fee TEXT NOT NULL,
         slippage TEXT NOT NULL,
+        market_impact TEXT NOT NULL,
+        reference_price TEXT,
         degraded_model INTEGER NOT NULL DEFAULT 0,
         filled_at TEXT NOT NULL
     )
@@ -218,14 +239,19 @@ SCHEMA_STATEMENTS = [
     """
     CREATE TABLE IF NOT EXISTS portfolio_snapshots (
         account_id TEXT NOT NULL,
+        trade_date TEXT NOT NULL,
         snapshot_time TEXT NOT NULL,
         cash TEXT NOT NULL,
         market_value TEXT NOT NULL,
         total_assets TEXT NOT NULL,
+        net_value TEXT NOT NULL,
+        peak_total_assets TEXT NOT NULL,
+        current_drawdown TEXT NOT NULL,
         daily_pnl TEXT NOT NULL,
         cumulative_return TEXT NOT NULL,
         max_drawdown TEXT NOT NULL,
-        PRIMARY KEY (account_id, snapshot_time)
+        cumulative_fees TEXT NOT NULL,
+        PRIMARY KEY (account_id, trade_date)
     )
     """,
     """
@@ -294,5 +320,38 @@ MIGRATION_STATEMENTS = {
     2: [
         "ALTER TABLE positions ADD COLUMN name TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE positions ADD COLUMN last_buy_date TEXT",
+    ],
+    3: [
+        "ALTER TABLE accounts ADD COLUMN peak_total_assets TEXT NOT NULL DEFAULT '0'",
+        "ALTER TABLE accounts ADD COLUMN current_drawdown TEXT NOT NULL DEFAULT '0'",
+        "ALTER TABLE accounts ADD COLUMN cumulative_fees TEXT NOT NULL DEFAULT '0'",
+        "UPDATE accounts SET peak_total_assets = "
+        "CASE WHEN CAST(total_assets AS REAL) > CAST(initial_cash AS REAL) "
+        "THEN total_assets ELSE initial_cash END",
+        "ALTER TABLE orders ADD COLUMN eligible_at TEXT",
+        "ALTER TABLE orders ADD COLUMN filled_quantity INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE orders ADD COLUMN remaining_quantity INTEGER",
+        "UPDATE orders SET filled_quantity = COALESCE("
+        "(SELECT SUM(fills.quantity) FROM fills WHERE fills.order_id = orders.order_id), 0)",
+        "UPDATE orders SET remaining_quantity = quantity - filled_quantity",
+        "UPDATE orders SET status = '可撮合' WHERE status IN ('待提交', '待成交')",
+        "ALTER TABLE fills ADD COLUMN market_impact TEXT NOT NULL DEFAULT '0'",
+        "ALTER TABLE fills ADD COLUMN reference_price TEXT",
+        "UPDATE fills SET reference_price = price WHERE reference_price IS NULL",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN trade_date TEXT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN net_value TEXT NOT NULL DEFAULT '1'",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN peak_total_assets TEXT NOT NULL DEFAULT '0'",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN current_drawdown TEXT NOT NULL DEFAULT '0'",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN cumulative_fees TEXT NOT NULL DEFAULT '0'",
+        "UPDATE portfolio_snapshots SET trade_date = substr(snapshot_time, 1, 10) "
+        "WHERE trade_date IS NULL",
+        "DELETE FROM portfolio_snapshots WHERE rowid NOT IN ("
+        "SELECT MAX(rowid) FROM portfolio_snapshots GROUP BY account_id, trade_date)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_snapshot_day "
+        "ON portfolio_snapshots(account_id, trade_date)",
+        "INSERT OR IGNORE INTO order_events ("
+        "event_id, order_id, status, event_time, reason, filled_quantity, remaining_quantity"
+        ") SELECT 'LEGACY-' || order_id, order_id, status, updated_at, "
+        "COALESCE(reason, 'v3迁移'), filled_quantity, remaining_quantity FROM orders",
     ],
 }
